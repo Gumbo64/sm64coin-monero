@@ -39,6 +39,7 @@
 #include <cassert>
 #include <iostream>
 #include <iomanip>
+#include <string>
 
 /*! \struct json_archive_base
  *
@@ -191,3 +192,12 @@ struct json_archive<true> : public json_archive_base<std::ostream, true>
 private:
   size_t inner_array_size_;
 };
+
+// SM64COIN: std::string fields (block::sm64_proof) as one quoted hex string;
+// the generic string serializer would emit its varint length first, which is
+// not valid JSON.
+inline bool do_serialize(json_archive<true>& ar, std::string& str)
+{
+  ar.serialize_blob(const_cast<char*>(str.data()), str.size());
+  return true;
+}
