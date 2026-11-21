@@ -41,11 +41,12 @@
 #define CRYPTONOTE_MAX_TX_SIZE                          1000000
 #define CRYPTONOTE_MAX_TX_PER_BLOCK                     0x10000000
 #define CRYPTONOTE_PUBLIC_ADDRESS_TEXTBLOB_VER          0
-#define CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW            60
+#define CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW            10 // SM64COIN: was 60
 #define CURRENT_TRANSACTION_VERSION                     2
 #define CURRENT_BLOCK_MAJOR_VERSION                     1
 #define CURRENT_BLOCK_MINOR_VERSION                     0
-#define CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT              60*60*2
+#define CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT              60*2 // SM64COIN: was 2 h; difficulty decays with timestamp age
+#define SM64COIN_MAX_PROOF_BYTES                        (1 << 20) // SM64COIN: cap on block::sm64_proof
 #define CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE             10
 
 #define BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW               60
@@ -77,11 +78,11 @@
 #define ORPHANED_BLOCKS_MAX_COUNT                       100
 
 
-#define DIFFICULTY_TARGET_V2                            120  // seconds
-#define DIFFICULTY_TARGET_V1                            60  // seconds - before first fork
-#define DIFFICULTY_WINDOW                               720 // blocks
-#define DIFFICULTY_LAG                                  15  // !!!
-#define DIFFICULTY_CUT                                  60  // timestamps to cut after sorting
+#define DIFFICULTY_TARGET_V2                            300  // seconds. SM64COIN: was 120; must equal Rules::target_seconds()
+#define DIFFICULTY_TARGET_V1                            300  // seconds. SM64COIN: was 60
+#define DIFFICULTY_WINDOW                               60 // blocks. SM64COIN: was 720; the retarget itself is Rules::next_difficulty()
+#define DIFFICULTY_LAG                                  0  // SM64COIN: was 15
+#define DIFFICULTY_CUT                                  6  // timestamps to cut after sorting. SM64COIN: was 60
 #define DIFFICULTY_BLOCKS_COUNT                         DIFFICULTY_WINDOW + DIFFICULTY_LAG
 
 
@@ -162,7 +163,7 @@
 
 #define RPC_IP_FAILS_BEFORE_BLOCK                       3
 
-#define CRYPTONOTE_NAME                         "bitmonero"
+#define CRYPTONOTE_NAME                         "sm64coin" // SM64COIN: was "bitmonero"
 #define CRYPTONOTE_BLOCKCHAINDATA_FILENAME      "data.mdb"
 #define CRYPTONOTE_BLOCKCHAINDATA_LOCK_FILENAME "lock.mdb"
 #define P2P_NET_DATA_FILENAME                   "p2pstate.bin"
@@ -224,17 +225,19 @@ namespace config
   uint64_t const DEFAULT_DUST_THRESHOLD = ((uint64_t)2000000000); // 2 * pow(10, 9)
   uint64_t const BASE_REWARD_CLAMP_THRESHOLD = ((uint64_t)100000000); // pow(10, 8)
 
-  uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 18;
-  uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 19;
-  uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 42;
-  uint16_t const P2P_DEFAULT_PORT = 18080;
-  uint16_t const RPC_DEFAULT_PORT = 18081;
-  uint16_t const ZMQ_RPC_DEFAULT_PORT = 18082;
+  // SM64COIN: addresses start "SM64", integrated "SM6i", subaddresses "SM6s".
+  uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 705687;
+  uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 1950871;
+  uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 2245783;
+  uint16_t const P2P_DEFAULT_PORT = 16480; // SM64COIN
+  uint16_t const RPC_DEFAULT_PORT = 16481;
+  uint16_t const ZMQ_RPC_DEFAULT_PORT = 16482;
   boost::uuids::uuid const NETWORK_ID = { {
-      0x12 ,0x30, 0xF1, 0x71 , 0x61, 0x04 , 0x41, 0x61, 0x17, 0x31, 0x00, 0x82, 0x16, 0xA1, 0xA1, 0x10
-    } }; // Bender's nightmare
-  std::string const GENESIS_TX = "013c01ff0001ffffffffffff03029b2e4c0281c0b02e7c53291a94d1d0cbff8883f8024f5142ee494ffbbd08807121017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
-  uint32_t const GENESIS_NONCE = 10000;
+      0xB8, 0x82, 0xEC, 0xCA, 0x48, 0x41, 0x57, 0x0F, 0x80, 0xE3, 0x21, 0x6B, 0x8C, 0x43, 0xC3, 0xE8
+    } }; // SM64COIN: uuid5(dns, "sm64coin-mainnet")
+  // SM64COIN: unlock 10, the full v1 reward at 5-minute blocks, paid to the RingCT H point (nobody knows its key: burned).
+  std::string const GENESIS_TX = "010a01ff0001ffffffffffff3f028b655970153799af2aeadc9ff1add0ea6c7251d54154cfa92c173a0dd39c1f9421017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
+  uint32_t const GENESIS_NONCE = 64064; // SM64COIN
 
   // Hash domain separators
   const char HASH_KEY_BULLETPROOF_EXPONENT[] = "bulletproof";
@@ -270,14 +273,15 @@ namespace config
     uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 53;
     uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 54;
     uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 63;
-    uint16_t const P2P_DEFAULT_PORT = 28080;
-    uint16_t const RPC_DEFAULT_PORT = 28081;
-    uint16_t const ZMQ_RPC_DEFAULT_PORT = 28082;
+    uint16_t const P2P_DEFAULT_PORT = 26480; // SM64COIN
+    uint16_t const RPC_DEFAULT_PORT = 26481; // SM64COIN
+    uint16_t const ZMQ_RPC_DEFAULT_PORT = 26482; // SM64COIN
     boost::uuids::uuid const NETWORK_ID = { {
-        0x12 ,0x30, 0xF1, 0x71 , 0x61, 0x04 , 0x41, 0x61, 0x17, 0x31, 0x00, 0x82, 0x16, 0xA1, 0xA1, 0x11
-      } }; // Bender's daydream
-    std::string const GENESIS_TX = "013c01ff0001ffffffffffff03029b2e4c0281c0b02e7c53291a94d1d0cbff8883f8024f5142ee494ffbbd08807121017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
-    uint32_t const GENESIS_NONCE = 10001;
+      0x17, 0x67, 0xCC, 0x76, 0xAE, 0x36, 0x5D, 0xF9, 0xAE, 0xF0, 0xD8, 0xFD, 0xAE, 0x81, 0xC2, 0x0F
+    } }; // SM64COIN: uuid5(dns, "sm64coin-testnet")
+    // SM64COIN: unlock 10, the full v1 reward at 5-minute blocks, paid to the RingCT H point (nobody knows its key: burned).
+  std::string const GENESIS_TX = "010a01ff0001ffffffffffff3f028b655970153799af2aeadc9ff1add0ea6c7251d54154cfa92c173a0dd39c1f9421017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
+    uint32_t const GENESIS_NONCE = 64065; // SM64COIN
   }
 
   namespace stagenet
@@ -285,14 +289,15 @@ namespace config
     uint64_t const CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX = 24;
     uint64_t const CRYPTONOTE_PUBLIC_INTEGRATED_ADDRESS_BASE58_PREFIX = 25;
     uint64_t const CRYPTONOTE_PUBLIC_SUBADDRESS_BASE58_PREFIX = 36;
-    uint16_t const P2P_DEFAULT_PORT = 38080;
-    uint16_t const RPC_DEFAULT_PORT = 38081;
-    uint16_t const ZMQ_RPC_DEFAULT_PORT = 38082;
+    uint16_t const P2P_DEFAULT_PORT = 36480; // SM64COIN
+    uint16_t const RPC_DEFAULT_PORT = 36481; // SM64COIN
+    uint16_t const ZMQ_RPC_DEFAULT_PORT = 36482; // SM64COIN
     boost::uuids::uuid const NETWORK_ID = { {
-        0x12 ,0x30, 0xF1, 0x71 , 0x61, 0x04 , 0x41, 0x61, 0x17, 0x31, 0x00, 0x82, 0x16, 0xA1, 0xA1, 0x12
-      } }; // Bender's daydream
-    std::string const GENESIS_TX = "013c01ff0001ffffffffffff0302df5d56da0c7d643ddd1ce61901c7bdc5fb1738bfe39fbe69c28a3a7032729c0f2101168d0c4ca86fb55a4cf6a36d31431be1c53a3bd7411bb24e8832410289fa6f3b";
-    uint32_t const GENESIS_NONCE = 10002;
+      0x44, 0xF1, 0xAB, 0x57, 0x35, 0x75, 0x57, 0x97, 0x90, 0xF9, 0x93, 0xE4, 0xA4, 0x64, 0x33, 0x32
+    } }; // SM64COIN: uuid5(dns, "sm64coin-stagenet")
+    // SM64COIN: unlock 10, the full v1 reward at 5-minute blocks, paid to the RingCT H point (nobody knows its key: burned).
+  std::string const GENESIS_TX = "010a01ff0001ffffffffffff3f028b655970153799af2aeadc9ff1add0ea6c7251d54154cfa92c173a0dd39c1f9421017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
+    uint32_t const GENESIS_NONCE = 64066; // SM64COIN
   }
 }
 

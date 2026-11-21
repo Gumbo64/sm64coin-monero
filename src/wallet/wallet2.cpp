@@ -13888,6 +13888,9 @@ uint64_t wallet2::get_daemon_blockchain_target_height(string &err)
 
 uint64_t wallet2::get_approximate_blockchain_height() const
 {
+  // SM64COIN: block times follow play, not a clock, so the height can't be
+  // estimated from dates; new wallets scan from the start (the chain is small).
+  return 0;
   const size_t wallet_num_hard_forks = m_nettype == TESTNET  ? num_testnet_hard_forks
                                      : m_nettype == STAGENET ? num_stagenet_hard_forks
                                      :                         num_mainnet_hard_forks;

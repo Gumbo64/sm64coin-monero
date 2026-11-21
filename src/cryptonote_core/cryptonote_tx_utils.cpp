@@ -708,37 +708,18 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
+  // SM64COIN: there is no hash-based proof of work (see sm64coin/sm64coin.h);
+  // the "long hash" is only a fast hash of the hashing blob, kept so the RPC's
+  // pow_hash fields and upstream call sites keep working.
   void get_altblock_longhash(const block& b, crypto::hash& res, const crypto::hash& seed_hash)
   {
     blobdata bd = get_block_hashing_blob(b);
-    rx_slow_hash(seed_hash.data, bd.data(), bd.size(), res.data);
+    crypto::cn_fast_hash(bd.data(), bd.size(), res);
   }
 
   bool get_block_longhash(const Blockchain *pbc, const blobdata& bd, crypto::hash& res, const uint64_t height, const int major_version, const crypto::hash *seed_hash, const int miners)
   {
-    // block 202612 bug workaround
-    if (height == 202612)
-    {
-      static const std::string longhash_202612 = "84f64766475d51837ac9efbef1926486e58563c95a19fef4aec3254f03000000";
-      epee::string_tools::hex_to_pod(longhash_202612, res);
-      return true;
-    }
-    if (major_version >= RX_BLOCK_VERSION)
-    {
-      crypto::hash hash;
-      if (pbc != NULL)
-      {
-        const uint64_t seed_height = rx_seedheight(height);
-        hash = seed_hash ? *seed_hash : pbc->get_pending_block_id_by_height(seed_height);
-      } else
-      {
-        memset(&hash, 0, sizeof(hash));  // only happens when generating genesis block
-      }
-      rx_slow_hash(hash.data, bd.data(), bd.size(), res.data);
-    } else {
-      const int pow_variant = major_version >= 7 ? major_version - 6 : 0;
-      crypto::cn_slow_hash(bd.data(), bd.size(), res, pow_variant, height);
-    }
+    crypto::cn_fast_hash(bd.data(), bd.size(), res);
     return true;
   }
 

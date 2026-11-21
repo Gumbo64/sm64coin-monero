@@ -195,6 +195,7 @@ namespace cryptonote
 
   bool checkpoints::init_default_checkpoints(network_type nettype)
   {
+    return true; // SM64COIN: Monero's checkpoints don't apply to this chain. Add ours here.
     if (nettype == TESTNET)
     {
       ADD_CHECKPOINT2(0,     "48ca7cd3c8de5b6a4d53d2861fbdaedca141553559f9be9520068053cda8430b", "0x1");
@@ -314,6 +315,7 @@ namespace cryptonote
 
   bool checkpoints::load_checkpoints_from_dns(network_type nettype)
   {
+    return true; // SM64COIN: no MoneroPulse; DNS checkpoints are not set up for this chain.
     std::vector<std::string> records;
 
     // All four MoneroPulse domains have DNSSEC on and valid

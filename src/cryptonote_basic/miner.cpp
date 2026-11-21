@@ -369,6 +369,10 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------------
   bool miner::start(const account_public_address& adr, size_t threads_count, bool do_background, bool ignore_battery)
   {
+    // SM64COIN: blocks are sealed by playing, not hashing. Use sm64coin-automine
+    // (pow/miner) or the web miner, which call get_block_template / submit_block.
+    MERROR("The built-in hash miner is not supported by SM64Coin: run sm64coin-automine or the web miner");
+    return false;
     m_block_reward = 0;
     m_mine_address = adr;
     m_threads_total = static_cast<uint32_t>(threads_count);

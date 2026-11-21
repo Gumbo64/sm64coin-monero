@@ -719,6 +719,7 @@ namespace nodetool
   std::set<std::string> node_server<t_payload_net_handler>::get_ip_seed_nodes() const
   {
     std::set<std::string> full_addrs;
+    return full_addrs; // SM64COIN: no public seed nodes yet; use --add-peer / --seed-node.
     if (m_nettype == cryptonote::TESTNET)
     {
       full_addrs.insert("176.9.0.187:28080");
@@ -753,6 +754,7 @@ namespace nodetool
   template<class t_payload_net_handler>
   std::set<std::string> node_server<t_payload_net_handler>::get_dns_seed_nodes()
   {
+    return get_ip_seed_nodes(); // SM64COIN: Monero's DNS seeds would point at the Monero network.
     if (!m_exclusive_peers.empty() || m_offline)
     {
       return {};

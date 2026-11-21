@@ -36,6 +36,7 @@ using namespace epee;
 
 #include <unordered_set>
 #include "cryptonote_core.h"
+#include "sm64coin/sm64coin.h" // SM64COIN
 #include "common/util.h"
 #include "common/updates.h"
 #include "common/download.h"
@@ -92,6 +93,12 @@ namespace cryptonote
   , "Don't delete any existing database when in fakechain mode."
   , false
   };
+  // SM64COIN
+  const command_line::arg_descriptor<std::string> arg_sm64_rom  = {
+    "sm64-rom"
+  , "US Super Mario 64 ROM (.z64, 8 MB) used to verify proof-of-play. Default: <data-dir>/baserom.us.z64, $SM64COIN_ROM, ./baserom.us.z64, ~/.sm64coin/baserom.us.z64"
+  , ""
+  };
   const command_line::arg_descriptor<difficulty_type> arg_fixed_difficulty  = {
     "fixed-difficulty"
   , "Fixed difficulty used for testing."
@@ -111,6 +118,12 @@ namespace cryptonote
         return (boost::filesystem::path(val) / "fake").string();
       return val;
     }
+  };
+  // SM64COIN
+  const command_line::arg_descriptor<bool> arg_sm64_solo = {
+    "sm64-solo"
+  , "Count as synchronized without peers, so a lone node can mine (to bootstrap a new network). Peers are still used."
+  , false
   };
   const command_line::arg_descriptor<bool> arg_offline = {
     "offline"
@@ -323,6 +336,7 @@ namespace cryptonote
     command_line::add_arg(desc, arg_regtest_on);
     command_line::add_arg(desc, arg_keep_fakechain);
     command_line::add_arg(desc, arg_fixed_difficulty);
+    command_line::add_arg(desc, arg_sm64_rom); // SM64COIN
     command_line::add_arg(desc, arg_dns_checkpoints);
     command_line::add_arg(desc, arg_prep_blocks_threads);
     command_line::add_arg(desc, arg_fast_block_sync);
@@ -332,6 +346,7 @@ namespace cryptonote
     command_line::add_arg(desc, arg_fluffy_blocks);
     command_line::add_arg(desc, arg_test_dbg_lock_sleep);
     command_line::add_arg(desc, arg_offline);
+    command_line::add_arg(desc, arg_sm64_solo); // SM64COIN
     command_line::add_arg(desc, arg_disable_dns_checkpoints);
     command_line::add_arg(desc, arg_block_download_max_size);
     command_line::add_arg(desc, arg_sync_pruned_blocks);
@@ -493,6 +508,22 @@ namespace cryptonote
     // make sure the data directory exists, and try to lock it
     CHECK_AND_ASSERT_MES (boost::filesystem::exists(folder) || boost::filesystem::create_directories(folder), false,
       std::string("Failed to create directory ").append(folder.string()).c_str());
+
+    // SM64COIN: load the ROM that proof-of-play is verified with.
+    {
+      std::string rom = command_line::get_arg(vm, arg_sm64_rom);
+      if (rom.empty() && boost::filesystem::exists(folder / "baserom.us.z64"))
+        rom = (folder / "baserom.us.z64").string();
+      std::string rom_error;
+      if (!sm64coin::init(rom, rom_error))
+      {
+        MERROR("Cannot load the SM64 ROM: " << rom_error << ". Pass --sm64-rom <path to a US .z64>.");
+        return false;
+      }
+      if (sm64coin::target_seconds() != DIFFICULTY_TARGET_V2)
+        MWARNING("Rules target " << sm64coin::target_seconds() << " s between blocks but DIFFICULTY_TARGET_V2 is " << DIFFICULTY_TARGET_V2);
+      MGINFO("Proof-of-play rules: " << sm64coin::rules_name() << " - " << sm64coin::rules_goal());
+    }
 
     // check for blockchain.bin
     try

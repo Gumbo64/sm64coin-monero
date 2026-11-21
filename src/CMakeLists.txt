@@ -90,6 +90,7 @@ add_subdirectory(common)
 add_subdirectory(crypto)
 add_subdirectory(ringct)
 add_subdirectory(checkpoints)
+add_subdirectory(sm64coin) # SM64COIN
 add_subdirectory(cryptonote_basic)
 add_subdirectory(cryptonote_core)
 add_subdirectory(lmdb)

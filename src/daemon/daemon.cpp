@@ -112,7 +112,7 @@ public:
       boost::program_options::variables_map const & vm
     )
     : core{vm}
-    , protocol{vm, core, command_line::get_arg(vm, cryptonote::arg_offline)}
+    , protocol{vm, core, command_line::get_arg(vm, cryptonote::arg_offline) || command_line::get_arg(vm, cryptonote::arg_sm64_solo)} // SM64COIN: solo counts as synced
     , p2p{vm, protocol}
     , zmq{nullptr}
   {

@@ -122,6 +122,7 @@ namespace cryptonote
   bool get_pruned_transaction_hash(const transaction& t, const crypto::hash &pruned_data_hash, crypto::hash& res);
 
   blobdata get_block_hashing_blob(const block& b);
+  blobdata get_block_id_blob(const block& b); // SM64COIN
   bool calculate_block_hash(const block& b, crypto::hash& res, const blobdata_ref *blob = NULL);
   bool get_block_hash(const block& b, crypto::hash& res);
   crypto::hash get_block_hash(const block& b);

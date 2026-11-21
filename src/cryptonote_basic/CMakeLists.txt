@@ -66,6 +66,7 @@ monero_add_library(cryptonote_basic
   ${cryptonote_basic_private_headers})
 target_link_libraries(cryptonote_basic
   PUBLIC
+    sm64coin # SM64COIN
     common
     cncrypto
     checkpoints

@@ -35,6 +35,7 @@
 #include "string_tools_lexical.h"
 #include "serialization/string.h"
 #include "cryptonote_format_utils.h"
+#include "sm64coin/sm64coin.h" // SM64COIN
 #include "cryptonote_config.h"
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
@@ -1475,6 +1476,15 @@ namespace cryptonote
     return blob;
   }
   //---------------------------------------------------------------
+  // SM64COIN: hashing blob (what the proof's RNG seed comes from) + proof id.
+  blobdata get_block_id_blob(const block& b)
+  {
+    blobdata blob = get_block_hashing_blob(b);
+    const crypto::hash pid = sm64coin::proof_id(b.sm64_proof);
+    blob.append(reinterpret_cast<const char*>(&pid), sizeof(pid));
+    return blob;
+  }
+  //---------------------------------------------------------------
   bool calculate_block_hash(const block& b, crypto::hash& res, const blobdata_ref *blob)
   {
     blobdata bd;
@@ -1486,7 +1496,8 @@ namespace cryptonote
       blob = &bdref;
     }
 
-    bool hash_result = get_object_hash(get_block_hashing_blob(b), res);
+    // SM64COIN: the id also commits to the proof-of-play.
+    bool hash_result = get_object_hash(get_block_id_blob(b), res);
     if (!hash_result)
       return false;
 

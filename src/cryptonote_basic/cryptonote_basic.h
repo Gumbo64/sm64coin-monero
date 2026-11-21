@@ -39,6 +39,7 @@
 #include "serialization/variant.h"
 #include "serialization/containers.h"
 #include "serialization/binary_archive.h"
+#include "serialization/string.h" // SM64COIN: block::sm64_proof
 #include "serialization/json_archive.h"
 #include "serialization/debug_archive.h"
 #include "serialization/crypto.h"
@@ -581,8 +582,8 @@ namespace cryptonote
 
   public:
     block(): block_header(), hash_valid(false) {}
-    block(const block &b): block_header(b), hash_valid(false), miner_tx(b.miner_tx), tx_hashes(b.tx_hashes) { if (b.is_hash_valid()) { hash = b.hash; set_hash_valid(true); } }
-    block &operator=(const block &b) { block_header::operator=(b); hash_valid = false; miner_tx = b.miner_tx; tx_hashes = b.tx_hashes; if (b.is_hash_valid()) { hash = b.hash; set_hash_valid(true); } return *this; }
+    block(const block &b): block_header(b), hash_valid(false), miner_tx(b.miner_tx), tx_hashes(b.tx_hashes), sm64_proof(b.sm64_proof) { if (b.is_hash_valid()) { hash = b.hash; set_hash_valid(true); } }
+    block &operator=(const block &b) { block_header::operator=(b); hash_valid = false; miner_tx = b.miner_tx; tx_hashes = b.tx_hashes; sm64_proof = b.sm64_proof; if (b.is_hash_valid()) { hash = b.hash; set_hash_valid(true); } return *this; }
     void invalidate_hashes() { set_hash_valid(false); }
     bool is_hash_valid() const { return hash_valid.load(std::memory_order_acquire); }
     void set_hash_valid(bool v) const { hash_valid.store(v,std::memory_order_release); }
@@ -590,6 +591,9 @@ namespace cryptonote
 
     transaction miner_tx;
     std::vector<crypto::hash> tx_hashes;
+    // SM64COIN: the proof-of-play (an encoded run of controller inputs, see
+    // pow/sm64pow/src/proof.rs). Opaque here; the last field of the blob.
+    std::string sm64_proof;
 
     // hash cash
     mutable crypto::hash hash;
@@ -602,6 +606,9 @@ namespace cryptonote
       FIELD(miner_tx)
       FIELD(tx_hashes)
       if (tx_hashes.size() > CRYPTONOTE_MAX_TX_PER_BLOCK)
+        return false;
+      FIELD(sm64_proof) // SM64COIN
+      if (sm64_proof.size() > SM64COIN_MAX_PROOF_BYTES)
         return false;
     END_SERIALIZE()
   };

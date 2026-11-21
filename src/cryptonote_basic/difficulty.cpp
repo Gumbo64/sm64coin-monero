@@ -38,6 +38,7 @@
 #include "crypto/hash.h"
 #include "cryptonote_config.h"
 #include "difficulty.h"
+#include "sm64coin/sm64coin.h" // SM64COIN
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "difficulty"
@@ -201,6 +202,9 @@ namespace cryptonote {
   }
 
   difficulty_type next_difficulty(std::vector<uint64_t> timestamps, std::vector<difficulty_type> cumulative_difficulties, size_t target_seconds) {
+    // SM64COIN: the retarget is a consensus rule in pow/sm64pow (Rules::next_difficulty).
+    (void)target_seconds;
+    return sm64coin::next_difficulty(timestamps, cumulative_difficulties);
     //cutoff DIFFICULTY_LAG
     if(timestamps.size() > DIFFICULTY_WINDOW)
     {

@@ -337,6 +337,11 @@ namespace cryptonote
      */
     difficulty_type get_difficulty_for_next_block();
 
+    // SM64COIN: proof-of-play (rules in pow/sm64pow)
+    uint64_t sm64_parent_timestamp(const block& b) const;
+    difficulty_type sm64_effective_difficulty(const block& b, const difficulty_type& retarget) const;
+    bool sm64_check_proof(const block& b, const difficulty_type& difficulty) const;
+
     /**
      * @brief check currently stored difficulties against difficulty checkpoints
      *

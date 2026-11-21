@@ -741,6 +741,18 @@ namespace cryptonote
       uint64_t database_size;
       bool update_available;
       bool busy_syncing;
+      // SM64COIN: the task a block found now would have to meet.
+      uint64_t sm64_difficulty;
+      uint32_t sm64_max_frames;
+      uint32_t sm64_random_amount;
+      uint32_t sm64_window_length;
+      uint32_t sm64_burst_length;
+      double sm64_a_prob;
+      double sm64_b_prob;
+      double sm64_z_prob;
+      uint64_t sm64_easier_at;
+      std::string sm64_rules;
+      std::string sm64_goal;
       std::string version;
       bool synchronized;
       bool restricted;
@@ -784,6 +796,17 @@ namespace cryptonote
         KV_SERIALIZE(update_available)
         KV_SERIALIZE(busy_syncing)
         KV_SERIALIZE(version)
+        KV_SERIALIZE(sm64_difficulty)
+        KV_SERIALIZE(sm64_max_frames)
+        KV_SERIALIZE(sm64_random_amount)
+        KV_SERIALIZE(sm64_window_length)
+        KV_SERIALIZE(sm64_burst_length)
+        KV_SERIALIZE(sm64_a_prob)
+        KV_SERIALIZE(sm64_b_prob)
+        KV_SERIALIZE(sm64_z_prob)
+        KV_SERIALIZE(sm64_easier_at)
+        KV_SERIALIZE(sm64_rules)
+        KV_SERIALIZE(sm64_goal)
         KV_SERIALIZE(synchronized)
         KV_SERIALIZE(restricted)
       END_KV_SERIALIZE_MAP()
@@ -976,6 +999,22 @@ namespace cryptonote
       std::string next_seed_hash;
       blobdata blocktemplate_blob;
       blobdata blockhashing_blob;
+      // SM64COIN: the proof-of-play task for this template. `difficulty` is
+      // already the effective (decayed) one; the proof goes in the
+      // template's last field (its final byte is the empty proof's 0x00).
+      uint32_t sm64_seed;
+      uint64_t sm64_timestamp;
+      uint32_t sm64_max_frames;
+      uint32_t sm64_random_amount;
+      uint32_t sm64_window_length;
+      uint32_t sm64_burst_length;
+      double sm64_a_prob;
+      double sm64_b_prob;
+      double sm64_z_prob;
+      uint64_t sm64_retarget_difficulty;
+      uint64_t sm64_easier_at;
+      std::string sm64_rules;
+      std::string sm64_goal;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_response_base)
@@ -991,6 +1030,19 @@ namespace cryptonote
         KV_SERIALIZE(blockhashing_blob)
         KV_SERIALIZE(seed_hash)
         KV_SERIALIZE(next_seed_hash)
+        KV_SERIALIZE(sm64_seed)
+        KV_SERIALIZE(sm64_timestamp)
+        KV_SERIALIZE(sm64_max_frames)
+        KV_SERIALIZE(sm64_random_amount)
+        KV_SERIALIZE(sm64_window_length)
+        KV_SERIALIZE(sm64_burst_length)
+        KV_SERIALIZE(sm64_a_prob)
+        KV_SERIALIZE(sm64_b_prob)
+        KV_SERIALIZE(sm64_z_prob)
+        KV_SERIALIZE(sm64_retarget_difficulty)
+        KV_SERIALIZE(sm64_easier_at)
+        KV_SERIALIZE(sm64_rules)
+        KV_SERIALIZE(sm64_goal)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;
@@ -1322,6 +1374,18 @@ namespace cryptonote
       std::vector<std::string> tx_hashes;
       std::string blob;
       std::string json;
+      // SM64COIN: the proof-of-play, decoded to raw pads (hex, 4 bytes/frame).
+      std::string sm64_pads;
+      uint32_t sm64_seed;
+      uint64_t sm64_frames;
+      uint64_t sm64_proof_bytes;
+      uint32_t sm64_max_frames;
+      uint32_t sm64_random_amount;
+      uint32_t sm64_window_length;
+      uint32_t sm64_burst_length;
+      double sm64_a_prob;
+      double sm64_b_prob;
+      double sm64_z_prob;
       
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_access_response_base)
@@ -1330,6 +1394,17 @@ namespace cryptonote
         KV_SERIALIZE(tx_hashes)
         KV_SERIALIZE(blob)
         KV_SERIALIZE(json)
+        KV_SERIALIZE(sm64_pads)
+        KV_SERIALIZE(sm64_seed)
+        KV_SERIALIZE(sm64_frames)
+        KV_SERIALIZE(sm64_proof_bytes)
+        KV_SERIALIZE(sm64_max_frames)
+        KV_SERIALIZE(sm64_random_amount)
+        KV_SERIALIZE(sm64_window_length)
+        KV_SERIALIZE(sm64_burst_length)
+        KV_SERIALIZE(sm64_a_prob)
+        KV_SERIALIZE(sm64_b_prob)
+        KV_SERIALIZE(sm64_z_prob)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;

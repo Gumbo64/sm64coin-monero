@@ -1,0 +1,28 @@
+# SM64COIN: proof-of-play. Builds the Rust crate pow/sm64pow (all consensus
+# rules live there) and wraps it for the daemon. See sm64coin.h.
+
+set(SM64POW_DIR "${CMAKE_SOURCE_DIR}/../pow" CACHE PATH "Path to the sm64coin Rust workspace")
+set(SM64POW_LIB "${SM64POW_DIR}/target/release/libsm64pow.a")
+
+add_custom_command(
+  OUTPUT "${SM64POW_LIB}"
+  COMMAND cargo build --release -p sm64pow
+  WORKING_DIRECTORY "${SM64POW_DIR}"
+  DEPENDS "${SM64POW_DIR}/sm64pow/src/lib.rs" "${SM64POW_DIR}/sm64pow/src/rules.rs"
+          "${SM64POW_DIR}/sm64pow/src/proof.rs" "${SM64POW_DIR}/sm64pow/src/ffi.rs"
+  COMMENT "Building the sm64pow Rust crate"
+  VERBATIM)
+add_custom_target(sm64pow_rust DEPENDS "${SM64POW_LIB}")
+
+add_library(sm64pow STATIC IMPORTED GLOBAL)
+set_target_properties(sm64pow PROPERTIES IMPORTED_LOCATION "${SM64POW_LIB}")
+add_dependencies(sm64pow sm64pow_rust)
+
+include_directories("${SM64POW_DIR}/sm64pow")
+monero_add_library(sm64coin sm64coin.cpp sm64coin.h)
+add_dependencies(sm64coin sm64pow_rust)
+target_link_libraries(sm64coin
+  PUBLIC
+    cncrypto
+    sm64pow
+    gcc_s util rt pthread m dl)

@@ -39,6 +39,7 @@
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "tx_pool.h"
 #include "blockchain.h"
+#include "sm64coin/sm64coin.h" // SM64COIN
 #include "blockchain_db/blockchain_db.h"
 #include "cryptonote_basic/cryptonote_boost_serialization.h"
 #include "cryptonote_basic/events.h"
@@ -1936,6 +1937,7 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
     // Check the block's hash against the difficulty target for its alt chain
     difficulty_type current_diff = get_next_difficulty_for_alternative_chain(alt_chain, bei);
     CHECK_AND_ASSERT_MES(current_diff, false, "!!!!!!! DIFFICULTY OVERHEAD !!!!!!!");
+    current_diff = sm64_effective_difficulty(b, current_diff); // SM64COIN
     crypto::hash proof_of_work;
     memset(proof_of_work.data, 0xff, sizeof(proof_of_work.data));
     if (b.major_version >= RX_BLOCK_VERSION)
@@ -1962,7 +1964,7 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
     {
       get_block_longhash(this, bei.bl, proof_of_work, bei.height, 0);
     }
-    if(!check_hash(proof_of_work, current_diff))
+    if(!sm64_check_proof(b, current_diff)) // SM64COIN: was check_hash(proof_of_work, current_diff)
     {
       MERROR_VER("Block with id: " << id << std::endl << " for alternative chain, does not have enough proof of work: " << proof_of_work << std::endl << " expected difficulty: " << current_diff);
       bvc.m_verifivation_failed = true;
@@ -4116,6 +4118,7 @@ leave:
   // changing this to throwing exceptions instead so we can clean up.
   difficulty_type current_diffic = get_difficulty_for_next_block();
   CHECK_AND_ASSERT_MES(current_diffic, false, "!!!!!!!!! difficulty overhead !!!!!!!!!");
+  current_diffic = sm64_effective_difficulty(bl, current_diffic); // SM64COIN: decays with the block's age
 
   TIME_MEASURE_FINISH(target_calculating_time);
 
@@ -4167,7 +4170,8 @@ leave:
       proof_of_work = get_block_longhash(this, bl, blockchain_height, 0);
 
     // validate proof_of_work versus difficulty target
-    if(!check_hash(proof_of_work, current_diffic))
+    // SM64COIN: was check_hash(proof_of_work, current_diffic). The genesis block is built from config, unplayed.
+    if(blockchain_height != 0 && !sm64_check_proof(bl, current_diffic))
     {
       MERROR_VER("Block with id: " << id << std::endl << "does not have enough proof of work: " << proof_of_work << " at height " << blockchain_height << ", unexpected difficulty: " << current_diffic);
       bvc.m_verifivation_failed = true;
@@ -5623,7 +5627,8 @@ void Blockchain::cancel()
 static const char expected_block_hashes_hash[] = "1ce21725b4753294c19c98530a27486f1ecbd781443fca64cedebb754454df9b";
 void Blockchain::load_compiled_in_block_hashes(const GetCheckpointsCallback& get_checkpoints)
 {
-  if (get_checkpoints == nullptr || !m_fast_sync)
+  // SM64COIN: src/blocks/*.dat are Monero's block hashes; none for this chain yet.
+  if (true || get_checkpoints == nullptr || !m_fast_sync)
   {
     return;
   }
@@ -5799,4 +5804,41 @@ void Blockchain::send_miner_notifications(uint64_t height, const crypto::hash &s
 namespace cryptonote {
 template bool Blockchain::get_transactions(const std::vector<crypto::hash>&, std::vector<transaction>&, std::vector<crypto::hash>&, bool) const;
 template bool Blockchain::get_split_transactions_blobs(const std::vector<crypto::hash>&, std::vector<std::tuple<crypto::hash, cryptonote::blobdata, crypto::hash, cryptonote::blobdata>>&, std::vector<crypto::hash>&) const;
+}
+
+//------------------------------------------------------------------
+// SM64COIN: proof-of-play hooks. The rules are in pow/sm64pow.
+uint64_t Blockchain::sm64_parent_timestamp(const block& b) const
+{
+  if (m_db->block_exists(b.prev_id))
+    return m_db->get_block_timestamp(m_db->get_block_height(b.prev_id));
+  cryptonote::blobdata blob;
+  if (m_db->get_alt_block(b.prev_id, NULL, &blob))
+  {
+    block parent;
+    if (parse_and_validate_block_from_blob(blob, parent))
+      return parent.timestamp;
+  }
+  return 0;
+}
+//------------------------------------------------------------------
+difficulty_type Blockchain::sm64_effective_difficulty(const block& b, const difficulty_type& retarget) const
+{
+  if (m_fixed_difficulty)
+    return retarget;
+  return sm64coin::effective_difficulty(retarget, b.timestamp, sm64_parent_timestamp(b));
+}
+//------------------------------------------------------------------
+bool Blockchain::sm64_check_proof(const block& b, const difficulty_type& difficulty) const
+{
+  std::string why;
+  const uint32_t seed = sm64coin::seed_from_hashing_blob(get_block_hashing_blob(b));
+  const uint64_t frames = sm64coin::verify(seed, difficulty, b.sm64_proof, why);
+  if (!frames)
+  {
+    MERROR_VER("Proof-of-play rejected (seed " << seed << ", difficulty " << difficulty << "): " << why);
+    return false;
+  }
+  MINFO("Proof-of-play accepted: " << frames << " frames, seed " << seed << ", difficulty " << difficulty);
+  return true;
 }

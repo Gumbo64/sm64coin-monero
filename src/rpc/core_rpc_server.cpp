@@ -36,6 +36,7 @@
 using namespace epee;
 
 #include "core_rpc_server.h"
+#include "sm64coin/sm64coin.h" // SM64COIN
 #include "common/command_line.h"
 #include "common/updates.h"
 #include "common/download.h"
@@ -522,6 +523,38 @@ namespace cryptonote
     res.top_block_hash = string_tools::pod_to_hex(top_hash);
     res.target_height = m_p2p.get_payload_object().is_synchronized() ? 0 : m_core.get_target_blockchain_height();
     store_difficulty(m_core.get_blockchain_storage().get_difficulty_for_next_block(), res.difficulty, res.wide_difficulty, res.difficulty_top64);
+    {
+      // SM64COIN: the task now (a block on top, timestamped now).
+      Blockchain &bc = m_core.get_blockchain_storage();
+      block probe = {};
+      probe.prev_id = top_hash;
+      probe.timestamp = time(NULL);
+      const difficulty_type retarget = bc.get_difficulty_for_next_block();
+      const difficulty_type eff = bc.sm64_effective_difficulty(probe, retarget);
+      const sm64coin::task t = sm64coin::task_for(eff);
+      res.sm64_difficulty = t.difficulty;
+      res.sm64_max_frames = t.max_frames;
+      res.sm64_random_amount = t.random_amount;
+      res.sm64_window_length = t.window_length;
+      res.sm64_burst_length = t.burst_length;
+      res.sm64_a_prob = t.a_prob;
+      res.sm64_b_prob = t.b_prob;
+      res.sm64_z_prob = t.z_prob;
+      res.sm64_rules = sm64coin::rules_name();
+      res.sm64_goal = sm64coin::rules_goal();
+      res.sm64_easier_at = 0;
+      const uint64_t parent_ts = bc.sm64_parent_timestamp(probe);
+      uint64_t lo = probe.timestamp, hi = probe.timestamp + 30 * 24 * 3600;
+      if (sm64coin::effective_difficulty(retarget, hi, parent_ts) < eff)
+      {
+        while (hi - lo > 1)
+        {
+          const uint64_t mid = lo + (hi - lo) / 2;
+          (sm64coin::effective_difficulty(retarget, mid, parent_ts) < eff ? hi : lo) = mid;
+        }
+        res.sm64_easier_at = hi;
+      }
+    }
     res.target = m_core.get_blockchain_storage().get_difficulty_target();
     res.tx_count = m_core.get_blockchain_storage().get_total_transactions() - res.height; //without coinbase
     res.tx_pool_size = m_core.get_pool_transactions_count(!restricted);
@@ -1975,9 +2008,41 @@ namespace cryptonote
     }
 
     res.reserved_offset = reserved_offset;
+    blobdata hashing_blob = get_block_hashing_blob(b);
+    {
+      // SM64COIN: the task, at the template's timestamp.
+      const Blockchain &bc = m_core.get_blockchain_storage();
+      const difficulty_type eff = bc.sm64_effective_difficulty(b, wdiff);
+      const sm64coin::task t = sm64coin::task_for(eff);
+      res.sm64_seed = sm64coin::seed_from_hashing_blob(hashing_blob);
+      res.sm64_timestamp = b.timestamp;
+      res.sm64_max_frames = t.max_frames;
+      res.sm64_random_amount = t.random_amount;
+      res.sm64_window_length = t.window_length;
+      res.sm64_burst_length = t.burst_length;
+      res.sm64_a_prob = t.a_prob;
+      res.sm64_b_prob = t.b_prob;
+      res.sm64_z_prob = t.z_prob;
+      res.sm64_retarget_difficulty = sm64coin::task_for(wdiff).difficulty;
+      res.sm64_rules = sm64coin::rules_name();
+      res.sm64_goal = sm64coin::rules_goal();
+      // When a fresh template would ask for less (the difficulty decays).
+      res.sm64_easier_at = 0;
+      const uint64_t parent_ts = bc.sm64_parent_timestamp(b);
+      uint64_t lo = b.timestamp, hi = b.timestamp + 30 * 24 * 3600;
+      if (sm64coin::effective_difficulty(wdiff, hi, parent_ts) < eff)
+      {
+        while (hi - lo > 1)
+        {
+          const uint64_t mid = lo + (hi - lo) / 2;
+          (sm64coin::effective_difficulty(wdiff, mid, parent_ts) < eff ? hi : lo) = mid;
+        }
+        res.sm64_easier_at = hi;
+      }
+      wdiff = eff;
+    }
     store_difficulty(wdiff, res.difficulty, res.wide_difficulty, res.difficulty_top64);
     blobdata block_blob = t_serializable_object_to_blob(b);
-    blobdata hashing_blob = get_block_hashing_blob(b);
     res.prev_hash = string_tools::pod_to_hex(b.prev_id);
     res.blocktemplate_blob = string_tools::buff_to_hex_nodelimer(block_blob);
     res.blockhashing_blob =  string_tools::buff_to_hex_nodelimer(hashing_blob);
@@ -2223,6 +2288,17 @@ namespace cryptonote
       error_resp.code = CORE_RPC_ERROR_CODE_WRONG_BLOCKBLOB;
       error_resp.message = "Wrong block blob";
       return false;
+    }
+
+    // SM64COIN: store and relay the proof in its smallest encoding (the block
+    // id commits to the decoded inputs, so this doesn't change it).
+    {
+      std::string smaller;
+      if (sm64coin::reencode(b.sm64_proof, smaller) && smaller.size() < b.sm64_proof.size())
+      {
+        b.sm64_proof = smaller;
+        b.invalidate_hashes();
+      }
     }
 
     // Fix from Boolberry neglects to check block
@@ -2721,6 +2797,27 @@ namespace cryptonote
     }
     res.blob = string_tools::buff_to_hex_nodelimer(t_serializable_object_to_blob(blk));
     res.json = obj_to_json_str(blk);
+    {
+      // SM64COIN: the run that sealed this block, codec-free, for explorers.
+      std::string raw;
+      res.sm64_seed = sm64coin::seed_from_hashing_blob(get_block_hashing_blob(blk));
+      res.sm64_proof_bytes = blk.sm64_proof.size();
+      // The task this block met: its difficulty is what it added to the chain's work.
+      difficulty_type d = m_core.get_blockchain_storage().get_db().get_block_difficulty(block_height);
+      const sm64coin::task t = sm64coin::task_for(d);
+      res.sm64_max_frames = t.max_frames;
+      res.sm64_random_amount = t.random_amount;
+      res.sm64_window_length = t.window_length;
+      res.sm64_burst_length = t.burst_length;
+      res.sm64_a_prob = t.a_prob;
+      res.sm64_b_prob = t.b_prob;
+      res.sm64_z_prob = t.z_prob;
+      if (sm64coin::decode_raw(blk.sm64_proof, raw))
+      {
+        res.sm64_pads = string_tools::buff_to_hex_nodelimer(raw);
+        res.sm64_frames = raw.size() / 4;
+      }
+    }
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }
