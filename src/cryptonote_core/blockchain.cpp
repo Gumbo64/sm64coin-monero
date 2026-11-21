@@ -5842,6 +5842,9 @@ bool Blockchain::sm64_parent_timestamp(const block& b, uint64_t& ts) const
 // hand its child a decay).
 bool Blockchain::sm64_check_timestamp(const block& b) const
 {
+  // The genesis block (built from config, no parent) has nothing to be after.
+  if (b.prev_id == crypto::null_hash)
+    return true;
   uint64_t parent_ts;
   if (!sm64_parent_timestamp(b, parent_ts) || b.timestamp <= parent_ts)
   {
