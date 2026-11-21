@@ -27,6 +27,7 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "json_object.h"
+#include "string_tools.h" // SM64COIN
 
 #include <boost/range/adaptor/transformed.hpp>
 #include <boost/variant/apply_visitor.hpp>
@@ -318,6 +319,7 @@ void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::b
   INSERT_INTO_JSON_OBJECT(dest, nonce, b.nonce);
   INSERT_INTO_JSON_OBJECT(dest, miner_tx, b.miner_tx);
   INSERT_INTO_JSON_OBJECT(dest, tx_hashes, b.tx_hashes);
+  INSERT_INTO_JSON_OBJECT(dest, sm64_proof, epee::string_tools::buff_to_hex_nodelimer(b.sm64_proof)); // SM64COIN
 
   dest.EndObject();
 }
@@ -337,6 +339,10 @@ void fromJsonValue(const rapidjson::Value& val, cryptonote::block& b)
   GET_FROM_JSON_OBJECT(val, b.nonce, nonce);
   GET_FROM_JSON_OBJECT(val, b.miner_tx, miner_tx);
   GET_FROM_JSON_OBJECT(val, b.tx_hashes, tx_hashes);
+  std::string proof_hex; // SM64COIN
+  GET_FROM_JSON_OBJECT(val, proof_hex, sm64_proof);
+  if (!epee::string_tools::parse_hexstr_to_binbuff(proof_hex, b.sm64_proof))
+    throw WRONG_TYPE("hex sm64_proof");
 }
 
 void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::txin_v& txin)

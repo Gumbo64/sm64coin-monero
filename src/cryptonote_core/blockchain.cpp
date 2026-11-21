@@ -951,7 +951,9 @@ std::pair<bool, uint64_t> Blockchain::check_difficulty_checkpoints() const
 //------------------------------------------------------------------
 size_t Blockchain::recalculate_difficulties(boost::optional<uint64_t> start_height_opt)
 {
-  if (m_fixed_difficulty)
+  // SM64COIN: the stored difficulties include the timestamp decay, which this
+  // upstream recomputation doesn't know about; it would corrupt them.
+  if (true || m_fixed_difficulty)
   {
     return 0;
   }
@@ -1618,6 +1620,12 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
   {
     b.timestamp = median_ts;
   }
+  {
+    // SM64COIN: blocks must be timestamped after their parent.
+    uint64_t parent_ts;
+    if (sm64_parent_timestamp(b, parent_ts) && b.timestamp <= parent_ts)
+      b.timestamp = parent_ts + 1;
+  }
 
   CHECK_AND_ASSERT_MES(diffic, false, "difficulty overhead.");
 
@@ -1919,7 +1927,7 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
 
     // verify that the block's timestamp is within the acceptable range
     // (not earlier than the median of the last X blocks)
-    if(!check_block_timestamp(timestamps, b))
+    if(!check_block_timestamp(timestamps, b) || !sm64_check_timestamp(b)) // SM64COIN
     {
       MERROR_VER("Block with id: " << id << std::endl << " for alternative chain, has invalid timestamp: " << b.timestamp);
       bvc.m_verifivation_failed = true;
@@ -3968,6 +3976,7 @@ uint64_t Blockchain::get_adjusted_time(uint64_t height) const
 //------------------------------------------------------------------
 bool Blockchain::check_block_timestamp(std::vector<uint64_t>& timestamps, const block& b, uint64_t* median_ts_out)
 {
+
   if (median_ts_out)
     *median_ts_out = 0;
 
@@ -4100,7 +4109,7 @@ leave:
 
   // make sure block timestamp is not less than the median timestamp
   // of a set number of the most recent blocks.
-  if(!check_block_timestamp_main_chain(bl))
+  if(!check_block_timestamp_main_chain(bl) || !sm64_check_timestamp(bl)) // SM64COIN
   {
     MERROR_VER("Block with id: " << id << std::endl << "has invalid timestamp: " << bl.timestamp);
     bvc.m_verifivation_failed = true;
@@ -5808,31 +5817,60 @@ template bool Blockchain::get_split_transactions_blobs(const std::vector<crypto:
 
 //------------------------------------------------------------------
 // SM64COIN: proof-of-play hooks. The rules are in pow/sm64pow.
-uint64_t Blockchain::sm64_parent_timestamp(const block& b) const
+bool Blockchain::sm64_parent_timestamp(const block& b, uint64_t& ts) const
 {
   if (m_db->block_exists(b.prev_id))
-    return m_db->get_block_timestamp(m_db->get_block_height(b.prev_id));
+  {
+    ts = m_db->get_block_timestamp(m_db->get_block_height(b.prev_id));
+    return true;
+  }
   cryptonote::blobdata blob;
   if (m_db->get_alt_block(b.prev_id, NULL, &blob))
   {
     block parent;
     if (parse_and_validate_block_from_blob(blob, parent))
-      return parent.timestamp;
+    {
+      ts = parent.timestamp;
+      return true;
+    }
   }
-  return 0;
+  return false;
+}
+//------------------------------------------------------------------
+// SM64COIN: blocks must be timestamped strictly after their parent, so the
+// difficulty decay measures real time since it (a back-dated block would
+// hand its child a decay).
+bool Blockchain::sm64_check_timestamp(const block& b) const
+{
+  uint64_t parent_ts;
+  if (!sm64_parent_timestamp(b, parent_ts) || b.timestamp <= parent_ts)
+  {
+    MERROR_VER("Timestamp of block with id: " << get_block_hash(b) << ", " << b.timestamp << ", is not after its parent's");
+    return false;
+  }
+  return true;
+}
+//------------------------------------------------------------------
+uint64_t Blockchain::sm64_parent_timestamp(const block& b) const
+{
+  uint64_t ts = 0;
+  sm64_parent_timestamp(b, ts);
+  return ts;
 }
 //------------------------------------------------------------------
 difficulty_type Blockchain::sm64_effective_difficulty(const block& b, const difficulty_type& retarget) const
 {
-  if (m_fixed_difficulty)
+  uint64_t parent_ts;
+  // Fail closed: without the parent there is no decay.
+  if (m_fixed_difficulty || !sm64_parent_timestamp(b, parent_ts))
     return retarget;
-  return sm64coin::effective_difficulty(retarget, b.timestamp, sm64_parent_timestamp(b));
+  return sm64coin::effective_difficulty(retarget, b.timestamp, parent_ts);
 }
 //------------------------------------------------------------------
 bool Blockchain::sm64_check_proof(const block& b, const difficulty_type& difficulty) const
 {
   std::string why;
-  const uint32_t seed = sm64coin::seed_from_hashing_blob(get_block_hashing_blob(b));
+  const crypto::hash seed = sm64coin::seed_hash(get_block_hashing_blob(b));
   const uint64_t frames = sm64coin::verify(seed, difficulty, b.sm64_proof, why);
   if (!frames)
   {

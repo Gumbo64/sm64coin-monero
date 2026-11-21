@@ -743,6 +743,7 @@ namespace cryptonote
       bool busy_syncing;
       // SM64COIN: the task a block found now would have to meet.
       uint64_t sm64_difficulty;
+      uint32_t sm64_reseed_frames;
       uint32_t sm64_max_frames;
       uint32_t sm64_random_amount;
       uint32_t sm64_window_length;
@@ -797,6 +798,7 @@ namespace cryptonote
         KV_SERIALIZE(busy_syncing)
         KV_SERIALIZE(version)
         KV_SERIALIZE(sm64_difficulty)
+        KV_SERIALIZE(sm64_reseed_frames)
         KV_SERIALIZE(sm64_max_frames)
         KV_SERIALIZE(sm64_random_amount)
         KV_SERIALIZE(sm64_window_length)
@@ -1003,6 +1005,8 @@ namespace cryptonote
       // already the effective (decayed) one; the proof goes in the
       // template's last field (its final byte is the empty proof's 0x00).
       uint32_t sm64_seed;
+      std::string sm64_seed_hash;
+      uint32_t sm64_reseed_frames;
       uint64_t sm64_timestamp;
       uint32_t sm64_max_frames;
       uint32_t sm64_random_amount;
@@ -1031,6 +1035,8 @@ namespace cryptonote
         KV_SERIALIZE(seed_hash)
         KV_SERIALIZE(next_seed_hash)
         KV_SERIALIZE(sm64_seed)
+        KV_SERIALIZE(sm64_seed_hash)
+        KV_SERIALIZE(sm64_reseed_frames)
         KV_SERIALIZE(sm64_timestamp)
         KV_SERIALIZE(sm64_max_frames)
         KV_SERIALIZE(sm64_random_amount)
@@ -1377,6 +1383,8 @@ namespace cryptonote
       // SM64COIN: the proof-of-play, decoded to raw pads (hex, 4 bytes/frame).
       std::string sm64_pads;
       uint32_t sm64_seed;
+      std::string sm64_seed_hash;
+      uint32_t sm64_reseed_frames;
       uint64_t sm64_frames;
       uint64_t sm64_proof_bytes;
       uint32_t sm64_max_frames;
@@ -1396,6 +1404,8 @@ namespace cryptonote
         KV_SERIALIZE(json)
         KV_SERIALIZE(sm64_pads)
         KV_SERIALIZE(sm64_seed)
+        KV_SERIALIZE(sm64_seed_hash)
+        KV_SERIALIZE(sm64_reseed_frames)
         KV_SERIALIZE(sm64_frames)
         KV_SERIALIZE(sm64_proof_bytes)
         KV_SERIALIZE(sm64_max_frames)

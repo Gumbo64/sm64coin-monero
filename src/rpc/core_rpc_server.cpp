@@ -533,6 +533,7 @@ namespace cryptonote
       const difficulty_type eff = bc.sm64_effective_difficulty(probe, retarget);
       const sm64coin::task t = sm64coin::task_for(eff);
       res.sm64_difficulty = t.difficulty;
+      res.sm64_reseed_frames = sm64coin::reseed_frames(eff);
       res.sm64_max_frames = t.max_frames;
       res.sm64_random_amount = t.random_amount;
       res.sm64_window_length = t.window_length;
@@ -2015,6 +2016,8 @@ namespace cryptonote
       const difficulty_type eff = bc.sm64_effective_difficulty(b, wdiff);
       const sm64coin::task t = sm64coin::task_for(eff);
       res.sm64_seed = sm64coin::seed_from_hashing_blob(hashing_blob);
+      res.sm64_seed_hash = string_tools::pod_to_hex(sm64coin::seed_hash(hashing_blob));
+      res.sm64_reseed_frames = sm64coin::reseed_frames(eff);
       res.sm64_timestamp = b.timestamp;
       res.sm64_max_frames = t.max_frames;
       res.sm64_random_amount = t.random_amount;
@@ -2801,6 +2804,7 @@ namespace cryptonote
       // SM64COIN: the run that sealed this block, codec-free, for explorers.
       std::string raw;
       res.sm64_seed = sm64coin::seed_from_hashing_blob(get_block_hashing_blob(blk));
+      res.sm64_seed_hash = string_tools::pod_to_hex(sm64coin::seed_hash(get_block_hashing_blob(blk)));
       res.sm64_proof_bytes = blk.sm64_proof.size();
       // The task this block met: its difficulty is what it added to the chain's work.
       difficulty_type d = m_core.get_blockchain_storage().get_db().get_block_difficulty(block_height);
@@ -2812,6 +2816,7 @@ namespace cryptonote
       res.sm64_a_prob = t.a_prob;
       res.sm64_b_prob = t.b_prob;
       res.sm64_z_prob = t.z_prob;
+      res.sm64_reseed_frames = sm64coin::reseed_frames(d);
       if (sm64coin::decode_raw(blk.sm64_proof, raw))
       {
         res.sm64_pads = string_tools::buff_to_hex_nodelimer(raw);

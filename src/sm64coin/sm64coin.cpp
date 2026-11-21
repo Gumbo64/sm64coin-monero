@@ -35,12 +35,20 @@ namespace sm64coin
 
   bool initialized() { return s_initialized; }
 
-  uint32_t seed_from_hashing_blob(const std::string &hashing_blob)
+  crypto::hash seed_hash(const std::string &hashing_blob)
   {
     crypto::hash h;
     crypto::cn_fast_hash(hashing_blob.data(), hashing_blob.size(), h);
+    return h;
+  }
+
+  uint32_t seed_from_hashing_blob(const std::string &hashing_blob)
+  {
+    const crypto::hash h = seed_hash(hashing_blob);
     return sm64pow_seed(reinterpret_cast<const uint8_t *>(h.data));
   }
+
+  uint32_t reseed_frames(const difficulty_type &difficulty) { return sm64pow_reseed_frames(clamp64(difficulty)); }
 
   crypto::hash proof_id(const std::string &proof)
   {
@@ -49,14 +57,14 @@ namespace sm64coin
     return h;
   }
 
-  uint64_t verify(uint32_t seed, const difficulty_type &difficulty, const std::string &proof, std::string &why)
+  uint64_t verify(const crypto::hash &seed, const difficulty_type &difficulty, const std::string &proof, std::string &why)
   {
     if (!s_initialized)
     {
       why = "proof-of-play is not initialized (no SM64 ROM loaded)";
       return 0;
     }
-    int64_t r = sm64pow_verify(seed, clamp64(difficulty), reinterpret_cast<const uint8_t *>(proof.data()), proof.size());
+    int64_t r = sm64pow_verify(reinterpret_cast<const uint8_t *>(seed.data), clamp64(difficulty), reinterpret_cast<const uint8_t *>(proof.data()), proof.size());
     if (r <= 0)
     {
       why = last_error();

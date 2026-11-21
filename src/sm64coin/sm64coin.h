@@ -21,14 +21,17 @@ namespace sm64coin
   bool init(const std::string &rom_path, std::string &error);
   bool initialized();
 
-  // The perturbation seed, from cn_fast_hash(block hashing blob).
+  // The perturbation seed: cn_fast_hash(block hashing blob), all 256 bits
+  // (fed to the game 32 bits at a time); and its first word, for display.
+  crypto::hash seed_hash(const std::string &hashing_blob);
   uint32_t seed_from_hashing_blob(const std::string &hashing_blob);
+  uint32_t reseed_frames(const difficulty_type &difficulty);
 
   // What the block id commits to for a proof blob (independent of its codec).
   crypto::hash proof_id(const std::string &proof);
 
   // Replays `proof`. Returns the number of frames when valid, 0 otherwise.
-  uint64_t verify(uint32_t seed, const difficulty_type &difficulty, const std::string &proof, std::string &why);
+  uint64_t verify(const crypto::hash &seed, const difficulty_type &difficulty, const std::string &proof, std::string &why);
 
   // Rules hooks (see pow/sm64pow/src/rules.rs).
   difficulty_type next_difficulty(const std::vector<uint64_t> &timestamps,
