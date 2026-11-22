@@ -56,7 +56,7 @@ namespace sm64coin
   // Every frame's played pad (4 bytes each) of block `id`'s run. 1 ok, 0
   // error, -2 parent state not cached. Parent arguments as for verify_block.
   int played_block(const crypto::hash &id, const crypto::hash *parent, uint64_t gap, const crypto::hash &seed,
-                   const std::string &proof, std::string &out, std::string &why);
+                   const std::string &proof, std::string &out, std::string &why, bool wanted = false); // SM64COIN: wanted = the proof's inputs, not every played pad
 
   // Rules hooks (see pow/sm64pow/src/rules.rs).
   difficulty_type next_difficulty(const std::vector<uint64_t> &timestamps,

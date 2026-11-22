@@ -352,7 +352,7 @@ namespace cryptonote
     // timestamp zeroed (so time passing never changes a block's pokes).
     static crypto::hash sm64_seed(const block& b);
     // Every frame's played pad (4 bytes each) of an accepted block's run.
-    bool sm64_played(const block& b, std::string& pads) const;
+    bool sm64_played(const block& b, std::string& pads, bool wanted = false) const; // SM64COIN: wanted = the proof's inputs (codec-free)
     // The blocks of the cycle up to and including `tip`, oldest first (the first one started from power-on).
     bool sm64_cycle(const crypto::hash& tip, std::vector<block>& blocks) const;
     // `tip`'s end progress (rebuilding its state if needed).

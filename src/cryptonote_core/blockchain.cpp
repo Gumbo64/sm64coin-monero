@@ -5955,7 +5955,7 @@ bool Blockchain::sm64_check_proof(const block& b, const difficulty_type& difficu
   return true;
 }
 //------------------------------------------------------------------
-bool Blockchain::sm64_played(const block& b, std::string& pads) const
+bool Blockchain::sm64_played(const block& b, std::string& pads, bool wanted) const
 {
   bool genesis_parent;
   uint64_t gap;
@@ -5964,9 +5964,9 @@ bool Blockchain::sm64_played(const block& b, std::string& pads) const
   const crypto::hash id = get_block_hash(b), seed = sm64_seed(b);
   const crypto::hash *parent = genesis_parent ? nullptr : &b.prev_id;
   std::string why;
-  int r = sm64coin::played_block(id, parent, gap, seed, b.sm64_proof, pads, why);
+  int r = sm64coin::played_block(id, parent, gap, seed, b.sm64_proof, pads, why, wanted);
   if (r == -2 && sm64_rebuild(b.prev_id))
-    r = sm64coin::played_block(id, parent, gap, seed, b.sm64_proof, pads, why);
+    r = sm64coin::played_block(id, parent, gap, seed, b.sm64_proof, pads, why, wanted);
   if (r != 1)
     MERROR("Proof-of-play: replaying block " << id << " failed: " << why);
   return r == 1;

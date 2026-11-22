@@ -102,10 +102,11 @@ namespace sm64coin
   uint32_t seed_word(const crypto::hash &seed) { return sm64pow_seed(u8(seed)); }
 
   int played_block(const crypto::hash &id, const crypto::hash *parent, uint64_t gap, const crypto::hash &seed,
-                   const std::string &proof, std::string &out, std::string &why)
+                   const std::string &proof, std::string &out, std::string &why, bool wanted)
   {
     const uint8_t *pp = parent ? u8(*parent) : nullptr;
-    size_t n = sm64pow_played_block(u8(id), pp, gap, u8(seed), u8(proof), proof.size(), nullptr, 0);
+    auto *fn = wanted ? sm64pow_wanted_block : sm64pow_played_block;
+    size_t n = fn(u8(id), pp, gap, u8(seed), u8(proof), proof.size(), nullptr, 0);
     if (n == SIZE_MAX - 1)
       return -2;
     if (n == SIZE_MAX)
@@ -114,7 +115,7 @@ namespace sm64coin
       return 0;
     }
     out.assign(n, '\0');
-    if (sm64pow_played_block(u8(id), pp, gap, u8(seed), u8(proof), proof.size(), reinterpret_cast<uint8_t *>(&out[0]), out.size()) != n)
+    if (fn(u8(id), pp, gap, u8(seed), u8(proof), proof.size(), reinterpret_cast<uint8_t *>(&out[0]), out.size()) != n)
     {
       why = last_error();
       return 0;

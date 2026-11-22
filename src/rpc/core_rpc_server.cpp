@@ -2865,6 +2865,8 @@ namespace cryptonote
       // every frame's played pad, e.g. for .m64 export.
       if (sm64coin::decode_raw(blk.sm64_proof, raw))
         res.sm64_pads = string_tools::buff_to_hex_nodelimer(raw);
+      else if (req.sm64_played && block_height > 0 && m_core.get_blockchain_storage().sm64_played(blk, raw, true))
+        res.sm64_pads = string_tools::buff_to_hex_nodelimer(raw); // SM64COIN: a state-coded proof is decoded by replay (opt-in sm64_played)
       res.sm64_frames = sm64coin::proof_frames(blk.sm64_proof);
       std::string played;
       if (req.sm64_played && block_height > 0 && m_core.get_blockchain_storage().sm64_played(blk, played))
