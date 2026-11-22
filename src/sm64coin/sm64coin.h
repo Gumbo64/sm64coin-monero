@@ -43,6 +43,8 @@ namespace sm64coin
   struct progress { uint32_t stars = 0, keys = 0; bool grand_star = false, ends_cycle = false; };
   // A cached block's end progress. False if not cached.
   bool block_progress(const crypto::hash &id, progress &p);
+  // What a cached block's run added ("c09s1", "key1", "grand"; empty if unknown). Bookkeeping.
+  std::string block_event(const crypto::hash &id);
   // A proof's start: 0 from the parent's end state, 1 from power-on, -1 bad.
   int proof_start(const std::string &proof);
   // Seconds without a block after which a block may start from power-on.

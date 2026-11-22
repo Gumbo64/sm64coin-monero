@@ -89,6 +89,12 @@ namespace sm64coin
 
   int proof_start(const std::string &proof) { return sm64pow_proof_start(u8(proof), proof.size()); }
 
+  std::string block_event(const crypto::hash &id)
+  {
+    char buf[32];
+    return sm64pow_block_event(u8(id), buf, sizeof(buf)) ? std::string(buf) : std::string();
+  }
+
   uint64_t stall_seconds() { return sm64pow_stall_seconds(); }
 
   uint32_t max_frames(const difficulty_type &difficulty, uint64_t elapsed) { return sm64pow_max_frames(clamp64(difficulty), elapsed); }

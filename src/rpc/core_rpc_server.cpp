@@ -2868,7 +2868,10 @@ namespace cryptonote
       res.sm64_frames = sm64coin::proof_frames(blk.sm64_proof);
       std::string played;
       if (req.sm64_played && block_height > 0 && m_core.get_blockchain_storage().sm64_played(blk, played))
+      {
         res.sm64_played_pads = string_tools::buff_to_hex_nodelimer(played);
+        res.sm64_event = sm64coin::block_event(get_block_hash(blk));
+      }
     }
     res.status = CORE_RPC_STATUS_OK;
     return true;
@@ -2910,6 +2913,7 @@ namespace cryptonote
       e.hash = epee::string_tools::pod_to_hex(get_block_hash(blk));
       e.frames = pads.size() / 4;
       e.power_on = sm64coin::proof_start(blk.sm64_proof) == 1;
+      e.event = sm64coin::block_event(get_block_hash(blk));
       res.blocks.push_back(e);
       all += pads;
     }

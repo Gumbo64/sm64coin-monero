@@ -1099,12 +1099,14 @@ namespace cryptonote
       std::string hash;
       uint32_t frames;
       bool power_on;
+      std::string event; // what the block added: "c09s1" (course 9 star 1), "c00s3" (castle), "key1", "grand"
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(height)
         KV_SERIALIZE(hash)
         KV_SERIALIZE(frames)
         KV_SERIALIZE(power_on)
+        KV_SERIALIZE(event)
       END_KV_SERIALIZE_MAP()
     };
 
@@ -1465,6 +1467,7 @@ namespace cryptonote
       // SM64COIN: the proof-of-play, decoded to raw pads (hex, 4 bytes/frame).
       std::string sm64_pads;
       std::string sm64_played_pads;
+      std::string sm64_event; // SM64COIN: what the block's run added (with sm64_played)
       uint32_t sm64_seed;
       std::string sm64_seed_hash;
       uint32_t sm64_reseed_frames;
@@ -1487,6 +1490,7 @@ namespace cryptonote
         KV_SERIALIZE(json)
         KV_SERIALIZE(sm64_pads)
         KV_SERIALIZE(sm64_played_pads)
+        KV_SERIALIZE(sm64_event)
         KV_SERIALIZE(sm64_seed)
         KV_SERIALIZE(sm64_seed_hash)
         KV_SERIALIZE(sm64_reseed_frames)
