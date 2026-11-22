@@ -4,12 +4,15 @@
 set(SM64POW_DIR "${CMAKE_SOURCE_DIR}/../pow" CACHE PATH "Path to the sm64coin Rust workspace")
 set(SM64POW_LIB "${SM64POW_DIR}/target/release/libsm64pow.a")
 
+# SM64COIN: every source of the crate and its perturbation crate triggers a rebuild (a stale
+# library once linked an old codec into the daemon).
+file(GLOB SM64POW_SOURCES CONFIGURE_DEPENDS "${SM64POW_DIR}/sm64pow/src/*.rs" "${SM64POW_DIR}/perturb/src/*.rs" "${SM64POW_DIR}/sm64pow/Cargo.toml")
+
 add_custom_command(
   OUTPUT "${SM64POW_LIB}"
   COMMAND cargo build --release -p sm64pow
   WORKING_DIRECTORY "${SM64POW_DIR}"
-  DEPENDS "${SM64POW_DIR}/sm64pow/src/lib.rs" "${SM64POW_DIR}/sm64pow/src/rules.rs"
-          "${SM64POW_DIR}/sm64pow/src/proof.rs" "${SM64POW_DIR}/sm64pow/src/ffi.rs"
+  DEPENDS ${SM64POW_SOURCES}
   COMMENT "Building the sm64pow Rust crate"
   VERBATIM)
 add_custom_target(sm64pow_rust DEPENDS "${SM64POW_LIB}")
