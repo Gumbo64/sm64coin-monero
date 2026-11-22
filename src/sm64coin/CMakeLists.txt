@@ -24,5 +24,12 @@ add_dependencies(sm64coin sm64pow_rust)
 target_link_libraries(sm64coin
   PUBLIC
     cncrypto
-    sm64pow
-    gcc_s util rt pthread m dl)
+    sm64pow)
+# Platform libraries of the Rust static library (std, wasmer, getrandom ...).
+if(WIN32)
+  target_link_libraries(sm64coin PUBLIC ws2_32 userenv bcrypt ntdll advapi32 kernel32 shell32 ole32 psapi dbghelp synchronization)
+elseif(APPLE)
+  target_link_libraries(sm64coin PUBLIC "-framework CoreFoundation" "-framework Security" iconv resolv pthread m dl)
+else()
+  target_link_libraries(sm64coin PUBLIC gcc_s util rt pthread m dl)
+endif()
