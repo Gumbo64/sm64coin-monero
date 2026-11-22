@@ -57,20 +57,63 @@ namespace sm64coin
     return h;
   }
 
-  uint64_t verify(const crypto::hash &seed, const difficulty_type &difficulty, const std::string &proof, std::string &why)
+  static const uint8_t *u8(const crypto::hash &h) { return reinterpret_cast<const uint8_t *>(h.data); }
+  static const uint8_t *u8(const std::string &s) { return reinterpret_cast<const uint8_t *>(s.data()); }
+
+  int64_t verify_block(const crypto::hash &id, const crypto::hash *parent, uint64_t gap, const crypto::hash &seed,
+                       const difficulty_type &difficulty, const std::string &proof, std::string &why)
   {
     if (!s_initialized)
     {
       why = "proof-of-play is not initialized (no SM64 ROM loaded)";
-      return 0;
+      return -1;
     }
-    int64_t r = sm64pow_verify(reinterpret_cast<const uint8_t *>(seed.data), clamp64(difficulty), reinterpret_cast<const uint8_t *>(proof.data()), proof.size());
+    const uint64_t d = difficulty == 0 ? 0 : clamp64(difficulty);
+    int64_t r = sm64pow_verify_block(u8(id), parent ? u8(*parent) : nullptr, gap, u8(seed), d, u8(proof), proof.size());
     if (r <= 0)
+      why = last_error();
+    return r;
+  }
+
+  bool has_state(const crypto::hash &id) { return sm64pow_has_state(u8(id)) == 1; }
+
+  bool block_progress(const crypto::hash &id, progress &p)
+  {
+    int32_t g = 0, e = 0;
+    if (!sm64pow_block_progress(u8(id), &p.stars, &p.keys, &g, &e))
+      return false;
+    p.grand_star = g != 0;
+    p.ends_cycle = e != 0;
+    return true;
+  }
+
+  int proof_start(const std::string &proof) { return sm64pow_proof_start(u8(proof), proof.size()); }
+
+  uint64_t stall_seconds() { return sm64pow_stall_seconds(); }
+
+  uint32_t max_frames(const difficulty_type &difficulty, uint64_t elapsed) { return sm64pow_max_frames(clamp64(difficulty), elapsed); }
+
+  uint32_t seed_word(const crypto::hash &seed) { return sm64pow_seed(u8(seed)); }
+
+  int played_block(const crypto::hash &id, const crypto::hash *parent, uint64_t gap, const crypto::hash &seed,
+                   const std::string &proof, std::string &out, std::string &why)
+  {
+    const uint8_t *pp = parent ? u8(*parent) : nullptr;
+    size_t n = sm64pow_played_block(u8(id), pp, gap, u8(seed), u8(proof), proof.size(), nullptr, 0);
+    if (n == SIZE_MAX - 1)
+      return -2;
+    if (n == SIZE_MAX)
     {
       why = last_error();
       return 0;
     }
-    return static_cast<uint64_t>(r);
+    out.assign(n, '\0');
+    if (sm64pow_played_block(u8(id), pp, gap, u8(seed), u8(proof), proof.size(), reinterpret_cast<uint8_t *>(&out[0]), out.size()) != n)
+    {
+      why = last_error();
+      return 0;
+    }
+    return 1;
   }
 
   template <typename F>
@@ -86,6 +129,11 @@ namespace sm64coin
 
   bool decode_raw(const std::string &proof, std::string &raw) { return size_then_fill(sm64pow_decode_raw, proof, raw); }
   bool reencode(const std::string &proof, std::string &out) { return size_then_fill(sm64pow_reencode, proof, out); }
+
+  uint32_t proof_frames(const std::string &proof)
+  {
+    return sm64pow_proof_frames(reinterpret_cast<const uint8_t *>(proof.data()), proof.size());
+  }
 
   difficulty_type next_difficulty(const std::vector<uint64_t> &timestamps,
                                   const std::vector<difficulty_type> &cumulative_difficulties)

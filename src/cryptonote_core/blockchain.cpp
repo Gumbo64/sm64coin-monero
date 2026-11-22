@@ -1945,7 +1945,7 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
     // Check the block's hash against the difficulty target for its alt chain
     difficulty_type current_diff = get_next_difficulty_for_alternative_chain(alt_chain, bei);
     CHECK_AND_ASSERT_MES(current_diff, false, "!!!!!!! DIFFICULTY OVERHEAD !!!!!!!");
-    current_diff = sm64_effective_difficulty(b, current_diff); // SM64COIN
+    const difficulty_type sm64_retarget = current_diff; current_diff = sm64_effective_difficulty(b, current_diff); // SM64COIN
     crypto::hash proof_of_work;
     memset(proof_of_work.data, 0xff, sizeof(proof_of_work.data));
     if (b.major_version >= RX_BLOCK_VERSION)
@@ -1972,7 +1972,7 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
     {
       get_block_longhash(this, bei.bl, proof_of_work, bei.height, 0);
     }
-    if(!sm64_check_proof(b, current_diff)) // SM64COIN: was check_hash(proof_of_work, current_diff)
+    if(!sm64_check_proof(b, sm64_retarget)) // SM64COIN: was check_hash(proof_of_work, current_diff)
     {
       MERROR_VER("Block with id: " << id << std::endl << " for alternative chain, does not have enough proof of work: " << proof_of_work << std::endl << " expected difficulty: " << current_diff);
       bvc.m_verifivation_failed = true;
@@ -4127,7 +4127,7 @@ leave:
   // changing this to throwing exceptions instead so we can clean up.
   difficulty_type current_diffic = get_difficulty_for_next_block();
   CHECK_AND_ASSERT_MES(current_diffic, false, "!!!!!!!!! difficulty overhead !!!!!!!!!");
-  current_diffic = sm64_effective_difficulty(bl, current_diffic); // SM64COIN: decays with the block's age
+  const difficulty_type sm64_retarget = current_diffic; current_diffic = sm64_effective_difficulty(bl, current_diffic); // SM64COIN: decays with the block's age
 
   TIME_MEASURE_FINISH(target_calculating_time);
 
@@ -4180,7 +4180,7 @@ leave:
 
     // validate proof_of_work versus difficulty target
     // SM64COIN: was check_hash(proof_of_work, current_diffic). The genesis block is built from config, unplayed.
-    if(blockchain_height != 0 && !sm64_check_proof(bl, current_diffic))
+    if(blockchain_height != 0 && !sm64_check_proof(bl, sm64_retarget))
     {
       MERROR_VER("Block with id: " << id << std::endl << "does not have enough proof of work: " << proof_of_work << " at height " << blockchain_height << ", unexpected difficulty: " << current_diffic);
       bvc.m_verifivation_failed = true;
@@ -5870,16 +5870,136 @@ difficulty_type Blockchain::sm64_effective_difficulty(const block& b, const diff
   return sm64coin::effective_difficulty(retarget, b.timestamp, parent_ts);
 }
 //------------------------------------------------------------------
+crypto::hash Blockchain::sm64_seed(const block& b)
+{
+  block t = b;
+  t.timestamp = 0;
+  return sm64coin::seed_hash(get_block_hashing_blob(t));
+}
+//------------------------------------------------------------------
+bool Blockchain::sm64_parent_ref(const block& b, bool& genesis_parent, uint64_t& gap) const
+{
+  genesis_parent = m_db->height() > 0 && b.prev_id == m_db->get_block_hash_from_height(0);
+  uint64_t parent_ts;
+  if (!sm64_parent_timestamp(b, parent_ts))
+    return false;
+  gap = b.timestamp > parent_ts ? b.timestamp - parent_ts : 0;
+  return true;
+}
+//------------------------------------------------------------------
+bool Blockchain::sm64_rebuild(const crypto::hash& h) const
+{
+  // Walk back to a block we can replay from: one whose parent's state is
+  // cached, whose parent is the genesis block, or that started from power-on
+  // after a stall (which needs no parent state).
+  std::vector<block> chain;
+  crypto::hash cur = h;
+  while (!sm64coin::has_state(cur))
+  {
+    block blk;
+    if (!get_block_by_hash(cur, blk))
+    {
+      MERROR("Proof-of-play: can't find block " << cur << " to rebuild its game state");
+      return false;
+    }
+    chain.push_back(blk);
+    bool genesis_parent;
+    uint64_t gap;
+    if (!sm64_parent_ref(blk, genesis_parent, gap))
+      return false;
+    if (genesis_parent || (sm64coin::proof_start(blk.sm64_proof) == 1 && gap > sm64coin::stall_seconds()))
+      break;
+    cur = blk.prev_id;
+  }
+  for (auto it = chain.rbegin(); it != chain.rend(); ++it)
+  {
+    bool genesis_parent;
+    uint64_t gap;
+    std::string why;
+    if (!sm64_parent_ref(*it, genesis_parent, gap) ||
+        sm64coin::verify_block(get_block_hash(*it), genesis_parent ? nullptr : &it->prev_id, gap, sm64_seed(*it), 0, it->sm64_proof, why) <= 0)
+    {
+      MERROR("Proof-of-play: replaying accepted block " << get_block_hash(*it) << " failed: " << why);
+      return false;
+    }
+  }
+  if (!chain.empty())
+    MINFO("Proof-of-play: rebuilt the game state of " << chain.size() << " block(s)");
+  return true;
+}
+//------------------------------------------------------------------
 bool Blockchain::sm64_check_proof(const block& b, const difficulty_type& difficulty) const
 {
+  // `difficulty` is the retarget difficulty: the time limit also grows with the gap to the parent.
   std::string why;
-  const crypto::hash seed = sm64coin::seed_hash(get_block_hashing_blob(b));
-  const uint64_t frames = sm64coin::verify(seed, difficulty, b.sm64_proof, why);
-  if (!frames)
+  const crypto::hash id = get_block_hash(b);
+  const crypto::hash seed = sm64_seed(b);
+  bool genesis_parent;
+  uint64_t gap;
+  if (!sm64_parent_ref(b, genesis_parent, gap))
+  {
+    MERROR_VER("Proof-of-play: block " << id << " has no known parent");
+    return false;
+  }
+  const crypto::hash *parent = genesis_parent ? nullptr : &b.prev_id;
+  int64_t frames = sm64coin::verify_block(id, parent, gap, seed, difficulty, b.sm64_proof, why);
+  if (frames == -2 && sm64_rebuild(b.prev_id))
+    frames = sm64coin::verify_block(id, parent, gap, seed, difficulty, b.sm64_proof, why);
+  if (frames <= 0)
   {
     MERROR_VER("Proof-of-play rejected (seed " << seed << ", difficulty " << difficulty << "): " << why);
     return false;
   }
   MINFO("Proof-of-play accepted: " << frames << " frames, seed " << seed << ", difficulty " << difficulty);
+  return true;
+}
+//------------------------------------------------------------------
+bool Blockchain::sm64_played(const block& b, std::string& pads) const
+{
+  bool genesis_parent;
+  uint64_t gap;
+  if (!sm64_parent_ref(b, genesis_parent, gap))
+    return false;
+  const crypto::hash id = get_block_hash(b), seed = sm64_seed(b);
+  const crypto::hash *parent = genesis_parent ? nullptr : &b.prev_id;
+  std::string why;
+  int r = sm64coin::played_block(id, parent, gap, seed, b.sm64_proof, pads, why);
+  if (r == -2 && sm64_rebuild(b.prev_id))
+    r = sm64coin::played_block(id, parent, gap, seed, b.sm64_proof, pads, why);
+  if (r != 1)
+    MERROR("Proof-of-play: replaying block " << id << " failed: " << why);
+  return r == 1;
+}
+//------------------------------------------------------------------
+bool Blockchain::sm64_cycle(const crypto::hash& tip, std::vector<block>& blocks) const
+{
+  blocks.clear();
+  crypto::hash cur = tip;
+  for (;;)
+  {
+    block blk;
+    if (!get_block_by_hash(cur, blk))
+      return false;
+    if (blk.prev_id == crypto::null_hash)
+      break; // the genesis block isn't played
+    blocks.push_back(blk);
+    if (sm64coin::proof_start(blk.sm64_proof) == 1)
+      break;
+    cur = blk.prev_id;
+  }
+  std::reverse(blocks.begin(), blocks.end());
+  return true;
+}
+//------------------------------------------------------------------
+bool Blockchain::sm64_progress(const crypto::hash& tip, sm64coin::progress& p) const
+{
+  p = sm64coin::progress();
+  block blk;
+  if (!get_block_by_hash(tip, blk))
+    return false;
+  if (blk.prev_id == crypto::null_hash)
+    return true; // the genesis block: nothing played yet
+  if (!sm64coin::block_progress(tip, p) && !(sm64_rebuild(tip) && sm64coin::block_progress(tip, p)))
+    return false;
   return true;
 }

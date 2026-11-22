@@ -2015,11 +2015,53 @@ namespace cryptonote
       const Blockchain &bc = m_core.get_blockchain_storage();
       const difficulty_type eff = bc.sm64_effective_difficulty(b, wdiff);
       const sm64coin::task t = sm64coin::task_for(eff);
-      res.sm64_seed = sm64coin::seed_from_hashing_blob(hashing_blob);
-      res.sm64_seed_hash = string_tools::pod_to_hex(sm64coin::seed_hash(hashing_blob));
+      const crypto::hash seed = Blockchain::sm64_seed(b);
+      res.sm64_seed = sm64coin::seed_word(seed);
+      res.sm64_seed_hash = string_tools::pod_to_hex(seed);
       res.sm64_reseed_frames = sm64coin::reseed_frames(eff);
       res.sm64_timestamp = b.timestamp;
-      res.sm64_max_frames = t.max_frames;
+      const uint64_t parent_ts = bc.sm64_parent_timestamp(b);
+      const uint64_t elapsed = b.timestamp > parent_ts ? b.timestamp - parent_ts : 0;
+      res.sm64_max_frames = sm64coin::max_frames(wdiff, elapsed);
+      res.sm64_parent_timestamp = parent_ts;
+      // Where the run starts.
+      {
+        sm64coin::progress pp;
+        const bool genesis_parent = res.height == 1;
+        bc.sm64_progress(b.prev_id, pp);
+        res.sm64_parent_stars = pp.stars;
+        res.sm64_parent_keys = pp.keys;
+        const uint64_t stall_at = parent_ts + sm64coin::stall_seconds() + 1;
+        if (genesis_parent || pp.ends_cycle)
+        {
+          res.sm64_start = "power-on";
+          res.sm64_power_on_at = 0;
+        }
+        else
+        {
+          res.sm64_start = b.timestamp >= stall_at ? "either" : "parent";
+          res.sm64_power_on_at = stall_at;
+        }
+        std::vector<block> cycle;
+        res.sm64_cycle_start_height = res.height;
+        if (!genesis_parent && !pp.ends_cycle && bc.sm64_cycle(b.prev_id, cycle) && !cycle.empty())
+          res.sm64_cycle_start_height = res.height - cycle.size();
+      }
+      res.sm64_valid_at = 0;
+      if (req.sm64_frames)
+      {
+        // The first second at which the limit reaches sm64_frames (it only grows).
+        uint64_t lo = parent_ts, hi = parent_ts + 365ull * 24 * 3600;
+        if (sm64coin::max_frames(wdiff, hi - parent_ts) >= req.sm64_frames)
+        {
+          while (hi - lo > 1)
+          {
+            const uint64_t mid = lo + (hi - lo) / 2;
+            (sm64coin::max_frames(wdiff, mid - parent_ts) >= req.sm64_frames ? hi : lo) = mid;
+          }
+          res.sm64_valid_at = std::max(hi, parent_ts + 1);
+        }
+      }
       res.sm64_random_amount = t.random_amount;
       res.sm64_window_length = t.window_length;
       res.sm64_burst_length = t.burst_length;
@@ -2029,9 +2071,9 @@ namespace cryptonote
       res.sm64_retarget_difficulty = sm64coin::task_for(wdiff).difficulty;
       res.sm64_rules = sm64coin::rules_name();
       res.sm64_goal = sm64coin::rules_goal();
-      // When a fresh template would ask for less (the difficulty decays).
+      // When the chain weight a block adds first decays (informational: the
+      // time limit grows continuously, and a run in progress stays valid).
       res.sm64_easier_at = 0;
-      const uint64_t parent_ts = bc.sm64_parent_timestamp(b);
       uint64_t lo = b.timestamp, hi = b.timestamp + 30 * 24 * 3600;
       if (sm64coin::effective_difficulty(wdiff, hi, parent_ts) < eff)
       {
@@ -2803,8 +2845,9 @@ namespace cryptonote
     {
       // SM64COIN: the run that sealed this block, codec-free, for explorers.
       std::string raw;
-      res.sm64_seed = sm64coin::seed_from_hashing_blob(get_block_hashing_blob(blk));
-      res.sm64_seed_hash = string_tools::pod_to_hex(sm64coin::seed_hash(get_block_hashing_blob(blk)));
+      const crypto::hash seed = Blockchain::sm64_seed(blk);
+      res.sm64_seed = sm64coin::seed_word(seed);
+      res.sm64_seed_hash = string_tools::pod_to_hex(seed);
       res.sm64_proof_bytes = blk.sm64_proof.size();
       // The task this block met: its difficulty is what it added to the chain's work.
       difficulty_type d = m_core.get_blockchain_storage().get_db().get_block_difficulty(block_height);
@@ -2817,12 +2860,68 @@ namespace cryptonote
       res.sm64_b_prob = t.b_prob;
       res.sm64_z_prob = t.z_prob;
       res.sm64_reseed_frames = sm64coin::reseed_frames(d);
+      // The proof holds the inputs of the non-poked frames; pokes are
+      // regenerated from the seed. sm64_played (opt-in: replays the run) gives
+      // every frame's played pad, e.g. for .m64 export.
       if (sm64coin::decode_raw(blk.sm64_proof, raw))
-      {
         res.sm64_pads = string_tools::buff_to_hex_nodelimer(raw);
-        res.sm64_frames = raw.size() / 4;
-      }
+      res.sm64_frames = sm64coin::proof_frames(blk.sm64_proof);
+      std::string played;
+      if (req.sm64_played && block_height > 0 && m_core.get_blockchain_storage().sm64_played(blk, played))
+        res.sm64_played_pads = string_tools::buff_to_hex_nodelimer(played);
     }
+    res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  // SM64COIN
+  bool core_rpc_server::on_get_sm64_cycle(const COMMAND_RPC_GET_SM64_CYCLE::request& req, COMMAND_RPC_GET_SM64_CYCLE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    RPC_TRACKER(get_sm64_cycle);
+    const Blockchain &bc = m_core.get_blockchain_storage();
+    crypto::hash tip;
+    if (req.hash.empty())
+      tip = m_core.get_tail_id();
+    else if (!epee::string_tools::hex_to_pod(req.hash, tip))
+    {
+      error_resp.code = CORE_RPC_ERROR_CODE_WRONG_PARAM;
+      error_resp.message = "Invalid hash";
+      return false;
+    }
+    std::vector<block> cycle;
+    if (!bc.sm64_cycle(tip, cycle))
+    {
+      error_resp.code = CORE_RPC_ERROR_CODE_WRONG_PARAM;
+      error_resp.message = "Unknown block";
+      return false;
+    }
+    std::string all;
+    for (const block &blk : cycle)
+    {
+      std::string pads;
+      if (!bc.sm64_played(blk, pads))
+      {
+        error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
+        error_resp.message = "Replaying a block of the cycle failed";
+        return false;
+      }
+      COMMAND_RPC_GET_SM64_CYCLE::block_entry e;
+      e.height = get_block_height(blk);
+      e.hash = epee::string_tools::pod_to_hex(get_block_hash(blk));
+      e.frames = pads.size() / 4;
+      e.power_on = sm64coin::proof_start(blk.sm64_proof) == 1;
+      res.blocks.push_back(e);
+      all += pads;
+    }
+    res.hash = epee::string_tools::pod_to_hex(tip);
+    res.start_height = cycle.empty() ? 0 : get_block_height(cycle.front());
+    res.played_pads = epee::string_tools::buff_to_hex_nodelimer(all);
+    sm64coin::progress p;
+    bc.sm64_progress(tip, p);
+    res.stars = p.stars;
+    res.keys = p.keys;
+    res.grand_star = p.grand_star;
+    res.ends_cycle = p.ends_cycle;
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }

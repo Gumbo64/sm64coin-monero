@@ -976,6 +976,7 @@ namespace cryptonote
       std::string wallet_address;
       std::string prev_block;
       std::string extra_nonce;
+      uint32_t sm64_frames; // SM64COIN: a run this long; the response says when it becomes valid
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_request_base)
@@ -983,6 +984,7 @@ namespace cryptonote
         KV_SERIALIZE(wallet_address)
         KV_SERIALIZE(prev_block)
         KV_SERIALIZE(extra_nonce)
+        KV_SERIALIZE_OPT(sm64_frames, (uint32_t)0)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
@@ -1019,6 +1021,18 @@ namespace cryptonote
       uint64_t sm64_easier_at;
       std::string sm64_rules;
       std::string sm64_goal;
+      // The cycle: where this block's run starts ("parent": the parent's end
+      // state, "power-on", or "either" after a stall), when a power-on start
+      // becomes allowed, the parent's progress, the cycle's first height.
+      std::string sm64_start;
+      uint64_t sm64_power_on_at;
+      uint64_t sm64_parent_timestamp;
+      uint32_t sm64_parent_stars;
+      uint32_t sm64_parent_keys;
+      uint64_t sm64_cycle_start_height;
+      // With request sm64_frames: when a run that long becomes valid (unix
+      // time; the time limit grows every second after the grace period).
+      uint64_t sm64_valid_at;
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_response_base)
@@ -1049,6 +1063,72 @@ namespace cryptonote
         KV_SERIALIZE(sm64_easier_at)
         KV_SERIALIZE(sm64_rules)
         KV_SERIALIZE(sm64_goal)
+        KV_SERIALIZE(sm64_start)
+        KV_SERIALIZE(sm64_power_on_at)
+        KV_SERIALIZE(sm64_parent_timestamp)
+        KV_SERIALIZE(sm64_parent_stars)
+        KV_SERIALIZE(sm64_parent_keys)
+        KV_SERIALIZE(sm64_cycle_start_height)
+        KV_SERIALIZE(sm64_valid_at)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  // SM64COIN: the current cycle of the game up to a block: its blocks and
+  // every frame's played pad, concatenated (4 bytes per frame, hex). Replaying
+  // them on a fresh game from power-on (no perturbation needed: the pads are
+  // the ones played) reaches that block's end state, where the next block's
+  // run starts.
+  struct COMMAND_RPC_GET_SM64_CYCLE
+  {
+    struct request_t: public rpc_request_base
+    {
+      std::string hash; // the last block; empty: the top block
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_request_base)
+        KV_SERIALIZE_OPT(hash, std::string())
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct block_entry
+    {
+      uint64_t height;
+      std::string hash;
+      uint32_t frames;
+      bool power_on;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(height)
+        KV_SERIALIZE(hash)
+        KV_SERIALIZE(frames)
+        KV_SERIALIZE(power_on)
+      END_KV_SERIALIZE_MAP()
+    };
+
+    struct response_t: public rpc_response_base
+    {
+      std::string hash;
+      uint64_t start_height;
+      std::vector<block_entry> blocks;
+      std::string played_pads;
+      uint32_t stars;
+      uint32_t keys;
+      bool grand_star;
+      bool ends_cycle;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_response_base)
+        KV_SERIALIZE(hash)
+        KV_SERIALIZE(start_height)
+        KV_SERIALIZE(blocks)
+        KV_SERIALIZE(played_pads)
+        KV_SERIALIZE(stars)
+        KV_SERIALIZE(keys)
+        KV_SERIALIZE(grand_star)
+        KV_SERIALIZE(ends_cycle)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;
@@ -1363,12 +1443,14 @@ namespace cryptonote
       std::string hash;
       uint64_t height;
       bool fill_pow_hash;
+      bool sm64_played; // SM64COIN: also replay the run for every frame's played pad
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_access_request_base)
         KV_SERIALIZE(hash)
         KV_SERIALIZE(height)
         KV_SERIALIZE_OPT(fill_pow_hash, false);
+        KV_SERIALIZE_OPT(sm64_played, false);
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
@@ -1382,6 +1464,7 @@ namespace cryptonote
       std::string json;
       // SM64COIN: the proof-of-play, decoded to raw pads (hex, 4 bytes/frame).
       std::string sm64_pads;
+      std::string sm64_played_pads;
       uint32_t sm64_seed;
       std::string sm64_seed_hash;
       uint32_t sm64_reseed_frames;
@@ -1403,6 +1486,7 @@ namespace cryptonote
         KV_SERIALIZE(blob)
         KV_SERIALIZE(json)
         KV_SERIALIZE(sm64_pads)
+        KV_SERIALIZE(sm64_played_pads)
         KV_SERIALIZE(sm64_seed)
         KV_SERIALIZE(sm64_seed_hash)
         KV_SERIALIZE(sm64_reseed_frames)

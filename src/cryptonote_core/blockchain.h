@@ -52,6 +52,7 @@
 #include "string_tools.h"
 #include "rolling_median.h"
 #include "cryptonote_basic/cryptonote_basic.h"
+#include "sm64coin/sm64coin.h" // SM64COIN
 #include "common/powerof.h"
 #include "common/util.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
@@ -343,6 +344,19 @@ namespace cryptonote
     uint64_t sm64_parent_timestamp(const block& b) const; // 0 if unknown
     difficulty_type sm64_effective_difficulty(const block& b, const difficulty_type& retarget) const;
     bool sm64_check_proof(const block& b, const difficulty_type& difficulty) const;
+    // The block's parent for the chain rules: whether it is the genesis block, and the timestamp gap.
+    bool sm64_parent_ref(const block& b, bool& genesis_parent, uint64_t& gap) const;
+    // Makes block `h`'s end state available (replays its ancestors back to the cycle start as needed).
+    bool sm64_rebuild(const crypto::hash& h) const;
+    // The perturbation seed of a block: cn_fast_hash of its hashing blob with the
+    // timestamp zeroed (so time passing never changes a block's pokes).
+    static crypto::hash sm64_seed(const block& b);
+    // Every frame's played pad (4 bytes each) of an accepted block's run.
+    bool sm64_played(const block& b, std::string& pads) const;
+    // The blocks of the cycle up to and including `tip`, oldest first (the first one started from power-on).
+    bool sm64_cycle(const crypto::hash& tip, std::vector<block>& blocks) const;
+    // `tip`'s end progress (rebuilding its state if needed).
+    bool sm64_progress(const crypto::hash& tip, sm64coin::progress& p) const;
 
     /**
      * @brief check currently stored difficulties against difficulty checkpoints
