@@ -6031,6 +6031,10 @@ bool Blockchain::sm64_hold(const block& b, const crypto::hash& id, const pool_su
 {
   if (m_db->height() == 0)
     return false; // (also with --fixed-difficulty, the testing knob: then the limit starts at the fixed difficulty's)
+  // Stamped further ahead than the future-time limit: not held (the normal path
+  // rejects it now, instead of after a wait in a hold slot).
+  if (b.timestamp > (uint64_t)time(NULL) + CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT)
+    return false;
   uint64_t parent_ts;
   if (!sm64_parent_timestamp(b, parent_ts))
     return false;
