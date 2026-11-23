@@ -2647,6 +2647,43 @@ skip:
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
+  int t_cryptonote_protocol_handler<t_core>::handle_notify_sm64_board(int command, NOTIFY_SM64_BOARD::request& arg, cryptonote_connection_context& context)
+  {
+    // SM64COIN: a peer's leaderboard entries. At most a board's worth; the
+    // core admits only verified entries that make its own top 50 and relays
+    // those, so nothing else spreads.
+    if (arg.entries.size() > 2 * sm64_board::TOP_N)
+    {
+      LOG_DEBUG_CC(context, "SM64 board: " << arg.entries.size() << " entries, dropped");
+      return 1;
+    }
+    std::string why;
+    const auto changed = m_core.sm64_board_offer(arg.entries, context.m_connection_id, &why);
+    if (!changed.empty())
+      MLOG_P2P_MESSAGE("SM64 board: " << changed.size() << " new entries from " << context.m_remote_address.str());
+    return 1;
+  }
+  //------------------------------------------------------------------------------------------------------------------------
+  template<class t_core>
+  bool t_cryptonote_protocol_handler<t_core>::relay_sm64_board(NOTIFY_SM64_BOARD::request& arg, const boost::uuids::uuid& source)
+  {
+    std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>> conns;
+    m_p2p->for_each_connection([&](connection_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)
+    {
+      if (peer_id && context.m_connection_id != source && context.m_remote_address.get_zone() == epee::net_utils::zone::public_)
+        conns.push_back({context.m_remote_address.get_zone(), context.m_connection_id});
+      return true;
+    });
+    if (!conns.empty())
+    {
+      epee::levin::message_writer blob{16 * 1024};
+      epee::serialization::store_t_to_binary(arg, blob.buffer);
+      m_p2p->relay_notify_to_list(NOTIFY_SM64_BOARD::ID, std::move(blob), std::move(conns));
+    }
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------
+  template<class t_core>
   bool t_cryptonote_protocol_handler<t_core>::relay_block(NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_connection_context& exclude_context)
   {
     // sort peers between fluffy ones and others

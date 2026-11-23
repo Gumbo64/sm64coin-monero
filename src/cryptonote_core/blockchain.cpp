@@ -2107,7 +2107,7 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
 
       return r;
     }
-    else if(main_chain_cumulative_difficulty < bei.cumulative_difficulty) //check if difficulty bigger then in main chain
+    else if(sm64coin::weigh_by_blocks() ? m_db->height() - 1 < bei.height : main_chain_cumulative_difficulty < bei.cumulative_difficulty) // SM64COIN: longer chain (rules), else difficulty bigger than in main chain
     {
       //do reorganize!
       MGINFO_GREEN("###### REORGANIZE on height: " << alt_chain.front().height << " of " << m_db->height() - 1 << " with cum_difficulty " << m_db->get_block_cumulative_difficulty(m_db->height() - 1) << std::endl << " alternative blockchain size: " << alt_chain.size() << " with cum_difficulty " << bei.cumulative_difficulty);
@@ -4712,6 +4712,7 @@ bool Blockchain::add_new_block(const block& bl, block_verification_context& bvc,
     return handle_alternative_block(bl, id, bvc, extra_block_txs);
     //never relay alternative blocks
   }
+  if (sm64_hold(bl, id, extra_block_txs)) return false; // SM64COIN: held until the run fits by this node's clock
 
   rtxn_guard.stop();
   return handle_block_to_main_chain(bl, id, bvc, extra_block_txs);
@@ -5852,6 +5853,12 @@ bool Blockchain::sm64_check_timestamp(const block& b) const
     MERROR_VER("Timestamp of block with id: " << get_block_hash(b) << ", " << b.timestamp << ", is not after its parent's");
     return false;
   }
+  // A fork from the genesis block (timestamp 0) must not declare time it never spent.
+  if (b.timestamp < sm64coin::launch_timestamp())
+  {
+    MERROR_VER("Timestamp of block with id: " << get_block_hash(b) << ", " << b.timestamp << ", predates the chain's launch " << sm64coin::launch_timestamp());
+    return false;
+  }
   return true;
 }
 //------------------------------------------------------------------
@@ -5908,8 +5915,8 @@ bool Blockchain::sm64_rebuild(const crypto::hash& h) const
     uint64_t gap;
     if (!sm64_parent_ref(blk, genesis_parent, gap))
       return false;
-    if (genesis_parent || (sm64coin::proof_start(blk.sm64_proof) == 1 && gap > sm64coin::stall_seconds()))
-      break;
+    if (genesis_parent || sm64coin::proof_start(blk.sm64_proof) == 1)
+      break; // a power-on start (cycle start or restart) needs no parent state to replay
     cur = blk.prev_id;
   }
   for (auto it = chain.rbegin(); it != chain.rend(); ++it)
@@ -6003,4 +6010,81 @@ bool Blockchain::sm64_progress(const crypto::hash& tip, sm64coin::progress& p) c
   if (!sm64coin::block_progress(tip, p) && !(sm64_rebuild(tip) && sm64coin::block_progress(tip, p)))
     return false;
   return true;
+}
+//------------------------------------------------------------------
+bool Blockchain::sm64_hold(const block& b, const crypto::hash& id, const pool_supplement& extra)
+{
+  if (m_db->height() == 0)
+    return false; // (also with --fixed-difficulty, the testing knob: then the limit starts at the fixed difficulty's)
+  uint64_t parent_ts;
+  if (!sm64_parent_timestamp(b, parent_ts))
+    return false;
+  const uint32_t frames = sm64coin::proof_frames(b.sm64_proof);
+  if (frames == 0)
+    return false; // doesn't decode: the normal path rejects it
+  const difficulty_type d = get_difficulty_for_next_block();
+  // A restart is judged against the limit `delay` seconds earlier.
+  uint64_t delay = 0;
+  const bool genesis_parent = b.prev_id == m_db->get_block_hash_from_height(0);
+  if (!genesis_parent && sm64coin::proof_start(b.sm64_proof) == 1)
+  {
+    sm64coin::progress pp;
+    if (!sm64_progress(b.prev_id, pp))
+      return false;
+    if (!pp.ends_cycle)
+    {
+      const int64_t r = sm64coin::restart_delay(pp);
+      if (r < 0)
+        return false;
+      delay = r;
+    }
+  }
+  const uint64_t now = time(NULL);
+  const uint64_t due = sm64coin::hold_until(d, parent_ts, b.timestamp, now, frames, delay); // the decision lives in pow/sm64pow (chain::hold_until)
+  if (due == 0)
+    return false; // fits by this node's clock (or too long even at its stamp: rejected as usual)
+  const crypto::hash seed = sm64_seed(b);
+  {
+    CRITICAL_REGION_LOCAL(m_sm64_held_lock);
+    if (m_sm64_held.count(id))
+      return true;
+    for (const auto &h : m_sm64_held)
+      if (h.second.seed == seed)
+        return true; // a copy of a held run (e.g. restamped): keep the first
+    if (m_sm64_held.size() >= 64)
+    {
+      MWARNING("Proof-of-play: hold full, processing block " << id << " now");
+      return false;
+    }
+  }
+  // Only a valid run is held (the replay also caches its end state).
+  if (!sm64_check_proof(b, d))
+    return false; // the normal path rejects it
+  CRITICAL_REGION_LOCAL(m_sm64_held_lock);
+  m_sm64_held[id] = sm64_held_block{b, extra, due, seed};
+  MINFO("Proof-of-play: holding block " << id << " (" << frames << " frames) for " << (due - now) << " s, until its run fits by this node's clock");
+  return true;
+}
+//------------------------------------------------------------------
+void Blockchain::sm64_take_due(std::vector<std::pair<block, pool_supplement>>& due)
+{
+  const uint64_t now = time(NULL);
+  CRITICAL_REGION_LOCAL(m_sm64_held_lock);
+  for (auto it = m_sm64_held.begin(); it != m_sm64_held.end();)
+  {
+    if (it->second.due <= now)
+    {
+      due.emplace_back(std::move(it->second.b), std::move(it->second.extra));
+      it = m_sm64_held.erase(it);
+    }
+    else
+      ++it;
+  }
+}
+//------------------------------------------------------------------
+uint64_t Blockchain::sm64_held_until(const crypto::hash& id) const
+{
+  CRITICAL_REGION_LOCAL(m_sm64_held_lock);
+  const auto it = m_sm64_held.find(id);
+  return it == m_sm64_held.end() ? 0 : it->second.due;
 }

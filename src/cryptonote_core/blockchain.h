@@ -357,6 +357,16 @@ namespace cryptonote
     bool sm64_cycle(const crypto::hash& tip, std::vector<block>& blocks) const;
     // `tip`'s end progress (rebuilding its state if needed).
     bool sm64_progress(const crypto::hash& tip, sm64coin::progress& p) const;
+    // The hold policy: a block extending the tip whose run is valid at its own
+    // timestamp but doesn't fit the limit yet by this node's clock is held (not
+    // rejected, its peer not punished) until it does, so stamping ahead wins
+    // nothing here. True: held. One block per seed (restamped copies of a run
+    // share it), at most 64.
+    bool sm64_hold(const block& b, const crypto::hash& id, const pool_supplement& extra);
+    // Removes and returns the held blocks whose time has come.
+    void sm64_take_due(std::vector<std::pair<block, pool_supplement>>& due);
+    // When block `id` is held, the unix time it is due (0: not held).
+    uint64_t sm64_held_until(const crypto::hash& id) const;
 
     /**
      * @brief check currently stored difficulties against difficulty checkpoints
@@ -1246,6 +1256,9 @@ namespace cryptonote
     network_type m_nettype;
     bool m_offline;
     difficulty_type m_fixed_difficulty;
+    struct sm64_held_block { block b; pool_supplement extra; uint64_t due; crypto::hash seed; }; // SM64COIN
+    std::map<crypto::hash, sm64_held_block> m_sm64_held; // SM64COIN: the hold policy
+    mutable epee::critical_section m_sm64_held_lock; // SM64COIN
 
     std::atomic<bool> m_cancel;
 

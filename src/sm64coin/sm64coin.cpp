@@ -95,7 +95,13 @@ namespace sm64coin
     return sm64pow_block_event(u8(id), buf, sizeof(buf)) ? std::string(buf) : std::string();
   }
 
-  uint64_t stall_seconds() { return sm64pow_stall_seconds(); }
+  bool weigh_by_blocks() { return sm64pow_weigh_by_blocks(); }
+  uint64_t hold_until(const difficulty_type &difficulty, uint64_t parent_ts, uint64_t block_ts, uint64_t now, uint32_t frames, uint64_t restart_delay)
+  {
+    return sm64pow_hold_until(clamp64(difficulty), parent_ts, block_ts, now, frames, restart_delay);
+  }
+  uint64_t launch_timestamp() { return sm64pow_launch_timestamp(); }
+  int64_t restart_delay(const progress &parent) { return sm64pow_restart_delay(parent.stars, parent.keys, parent.grand_star); }
 
   uint32_t max_frames(const difficulty_type &difficulty, uint64_t elapsed) { return sm64pow_max_frames(clamp64(difficulty), elapsed); }
 
@@ -169,6 +175,7 @@ namespace sm64coin
     t.difficulty = clamp64(difficulty);
     sm64pow_params(t.difficulty, &t.max_frames, &t.random_amount, &t.window_length, &t.burst_length);
     sm64pow_probs(t.difficulty, &t.a_prob, &t.b_prob, &t.z_prob);
+    sm64pow_mix(t.difficulty, &t.timing_mix, &t.pad_mix);
     return t;
   }
 

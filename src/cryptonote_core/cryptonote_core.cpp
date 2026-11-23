@@ -707,6 +707,7 @@ namespace cryptonote
     };
     const difficulty_type fixed_difficulty = command_line::get_arg(vm, arg_fixed_difficulty);
     r = m_blockchain_storage.init(db.release(), m_nettype, m_offline, regtest ? &regtest_test_options : test_options, fixed_difficulty, get_checkpoints);
+    m_sm64_board.init(m_config_folder + "/sm64_board.json", m_nettype); // SM64COIN
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize blockchain storage");
 
     r = m_mempool.init(max_txpool_weight, m_nettype == FAKECHAIN);
@@ -1600,6 +1601,53 @@ namespace cryptonote
     return true;
   }
   //-----------------------------------------------------------------------------------------------
+  void core::sm64_release_held()
+  {
+    // SM64COIN: the hold policy (Blockchain::sm64_hold): process held blocks
+    // once their run fits the limit by this node's clock, and relay them.
+    std::vector<std::pair<block, pool_supplement>> due;
+    m_blockchain_storage.sm64_take_due(due);
+    for (auto &d : due)
+    {
+      block_verification_context bvc{};
+      const blobdata blob = block_to_blob(d.first);
+      handle_single_incoming_block(blob, &d.first, bvc, d.second, true);
+      if (bvc.m_added_to_main_chain)
+      {
+        MINFO("Proof-of-play: held block " << get_block_hash(d.first) << " accepted, relaying");
+        cryptonote_connection_context exclude_context = {};
+        NOTIFY_NEW_FLUFFY_BLOCK::request arg{};
+        arg.current_blockchain_height = get_block_height(d.first) + 1;
+        arg.b.block = blob;
+        m_pprotocol->relay_block(arg, exclude_context);
+      }
+    }
+  }
+  //-----------------------------------------------------------------------------------------------
+  std::vector<sm64_board_entry> core::sm64_board_offer(const std::vector<sm64_board_entry> &entries, const boost::uuids::uuid &source, std::string *why)
+  {
+    std::vector<sm64_board_entry> changed = m_sm64_board.offer(entries, m_blockchain_storage, why);
+    if (!changed.empty())
+    {
+      NOTIFY_SM64_BOARD::request arg{};
+      arg.entries = changed;
+      m_pprotocol->relay_sm64_board(arg, source);
+    }
+    return changed;
+  }
+  //-----------------------------------------------------------------------------------------------
+  void core::sm64_board_tick()
+  {
+    m_sm64_board_scan.do_call([this]() { m_sm64_board.update(m_blockchain_storage); return true; });
+    m_sm64_board_share.do_call([this]() {
+      NOTIFY_SM64_BOARD::request arg{};
+      arg.entries = m_sm64_board.entries();
+      if (!arg.entries.empty())
+        m_pprotocol->relay_sm64_board(arg, boost::uuids::nil_uuid());
+      return true;
+    });
+  }
+  //-----------------------------------------------------------------------------------------------
   bool core::on_idle()
   {
     if(!m_starter_message_showed)
@@ -1621,6 +1669,8 @@ namespace cryptonote
       m_starter_message_showed = true;
     }
 
+    sm64_release_held(); // SM64COIN: held blocks whose run now fits by our clock
+    sm64_board_tick(); // SM64COIN: the leaderboard
     relay_txpool_transactions(); // txpool handles periodic DB checking
     m_check_updates_interval.do_call(boost::bind(&core::check_updates, this));
     m_check_disk_space_interval.do_call(boost::bind(&core::check_disk_space, this));

@@ -43,6 +43,8 @@ namespace cryptonote
     virtual bool is_synchronized() const = 0;
     virtual bool relay_block(NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_connection_context& exclude_context)=0;
     virtual bool relay_transactions(NOTIFY_NEW_TRANSACTIONS::request& arg, const boost::uuids::uuid& source, epee::net_utils::zone zone, relay_method tx_relay)=0;
+    // SM64COIN: the mining leaderboard, to every public peer but `source`.
+    virtual bool relay_sm64_board(NOTIFY_SM64_BOARD::request& arg, const boost::uuids::uuid& source) { return false; }
     //virtual bool request_objects(NOTIFY_REQUEST_GET_OBJECTS::request& arg, cryptonote_connection_context& context)=0;
   };
 

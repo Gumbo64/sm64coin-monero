@@ -541,6 +541,7 @@ namespace cryptonote
       res.sm64_a_prob = t.a_prob;
       res.sm64_b_prob = t.b_prob;
       res.sm64_z_prob = t.z_prob;
+      res.sm64_timing_mix = t.timing_mix; res.sm64_pad_mix = t.pad_mix; // SM64COIN
       res.sm64_rules = sm64coin::rules_name();
       res.sm64_goal = sm64coin::rules_goal();
       res.sm64_easier_at = 0;
@@ -2031,7 +2032,9 @@ namespace cryptonote
         bc.sm64_progress(b.prev_id, pp);
         res.sm64_parent_stars = pp.stars;
         res.sm64_parent_keys = pp.keys;
-        const uint64_t stall_at = parent_ts + sm64coin::stall_seconds() + 1;
+        // A restart (power-on start) is judged against the limit
+        // sm64_restart_delay seconds earlier, so it is valid from parent + delay.
+        res.sm64_restart_delay = 0;
         if (genesis_parent || pp.ends_cycle)
         {
           res.sm64_start = "power-on";
@@ -2039,8 +2042,11 @@ namespace cryptonote
         }
         else
         {
-          res.sm64_start = b.timestamp >= stall_at ? "either" : "parent";
-          res.sm64_power_on_at = stall_at;
+          const int64_t delay = sm64coin::restart_delay(pp);
+          const uint64_t restart_at = delay < 0 ? 0 : parent_ts + (uint64_t)delay;
+          res.sm64_start = delay >= 0 && b.timestamp >= restart_at ? "either" : "parent";
+          res.sm64_power_on_at = restart_at;
+          res.sm64_restart_delay = delay < 0 ? 0 : (uint64_t)delay;
         }
         std::vector<block> cycle;
         res.sm64_cycle_start_height = res.height;
@@ -2068,6 +2074,7 @@ namespace cryptonote
       res.sm64_a_prob = t.a_prob;
       res.sm64_b_prob = t.b_prob;
       res.sm64_z_prob = t.z_prob;
+      res.sm64_timing_mix = t.timing_mix; res.sm64_pad_mix = t.pad_mix; // SM64COIN
       res.sm64_retarget_difficulty = sm64coin::task_for(wdiff).difficulty;
       res.sm64_rules = sm64coin::rules_name();
       res.sm64_goal = sm64coin::rules_goal();
@@ -2859,6 +2866,7 @@ namespace cryptonote
       res.sm64_a_prob = t.a_prob;
       res.sm64_b_prob = t.b_prob;
       res.sm64_z_prob = t.z_prob;
+      res.sm64_timing_mix = t.timing_mix; res.sm64_pad_mix = t.pad_mix; // SM64COIN
       res.sm64_reseed_frames = sm64coin::reseed_frames(d);
       // The proof holds the inputs of the non-poked frames; pokes are
       // regenerated from the seed. sm64_played (opt-in: replays the run) gives
@@ -2880,6 +2888,50 @@ namespace cryptonote
   }
   //------------------------------------------------------------------------------------------------------------------------------
   // SM64COIN
+  bool core_rpc_server::on_sm64_board(const COMMAND_RPC_SM64_BOARD::request& req, COMMAND_RPC_SM64_BOARD::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    // SM64COIN: the leaderboard this node keeps (top 50 by blocks mined).
+    for (const auto &r : m_core.sm64_board_rows())
+    {
+      COMMAND_RPC_SM64_BOARD::row x;
+      x.name = r.entry.name;
+      x.address = r.entry.address;
+      x.view_key = r.entry.view_key;
+      x.timestamp = r.entry.timestamp;
+      x.signature = r.entry.signature;
+      x.blocks = r.blocks;
+      x.reward = r.reward;
+      x.last_height = r.last_height;
+      res.entries.push_back(x);
+    }
+    res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_sm64_board_join(const COMMAND_RPC_SM64_BOARD_JOIN::request& req, COMMAND_RPC_SM64_BOARD_JOIN::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    // SM64COIN: an entry for the leaderboard; verified, counted and, if it
+    // changes the board, relayed to every peer.
+    sm64_board_entry e;
+    e.name = req.name;
+    e.address = req.address;
+    e.view_key = req.view_key;
+    e.timestamp = req.timestamp;
+    e.signature = req.signature;
+    std::string why;
+    res.joined = !m_core.sm64_board_offer({e}, boost::uuids::nil_uuid(), &why).empty();
+    if (!res.joined)
+    {
+      bool on = false;
+      for (const auto &r : m_core.sm64_board_rows())
+        on = on || (r.entry.address == e.address && r.entry.name == e.name && r.entry.timestamp == e.timestamp);
+      res.joined = on;
+      res.reason = on ? "already on the board" : (why.empty() ? "an entry with a later timestamp is on the board" : why);
+    }
+    res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_get_sm64_cycle(const COMMAND_RPC_GET_SM64_CYCLE::request& req, COMMAND_RPC_GET_SM64_CYCLE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     RPC_TRACKER(get_sm64_cycle);

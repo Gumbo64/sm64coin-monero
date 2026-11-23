@@ -375,5 +375,45 @@ namespace cryptonote
     };
     typedef epee::misc_utils::struct_init<request_t> request;
   };
-    
+
+  // SM64COIN: the mining leaderboard, shared between nodes (sm64_board.h).
+  // An entry names an address that has mined blocks: its secret view key
+  // (so any node can count the blocks) and a spend-key signature of
+  // "sm64coin-board:<timestamp>:<name>" (so only the address's owner can
+  // name it; the latest timestamp wins, so the owner can rename).
+  struct sm64_board_entry
+  {
+    std::string name;
+    std::string address;
+    std::string view_key;
+    uint64_t timestamp = 0;
+    std::string signature;
+
+    BEGIN_KV_SERIALIZE_MAP()
+      KV_SERIALIZE(name)
+      KV_SERIALIZE(timestamp)
+      KV_SERIALIZE(address)
+      KV_SERIALIZE(view_key)
+      KV_SERIALIZE(signature)
+    END_KV_SERIALIZE_MAP()
+  };
+
+  /************************************************************************/
+  /*                                                                      */
+  /************************************************************************/
+  struct NOTIFY_SM64_BOARD // SM64COIN
+  {
+    const static int ID = BC_COMMANDS_POOL_BASE + 11;
+
+    struct request_t
+    {
+      std::vector<sm64_board_entry> entries;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(entries)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+  };
+
 }

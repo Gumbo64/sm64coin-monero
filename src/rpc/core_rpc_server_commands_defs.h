@@ -751,6 +751,8 @@ namespace cryptonote
       double sm64_a_prob;
       double sm64_b_prob;
       double sm64_z_prob;
+      uint32_t sm64_timing_mix; // SM64COIN: frames between state mixes into the poke timing stream (0: never)
+      uint32_t sm64_pad_mix; // SM64COIN: the same for the pad stream
       uint64_t sm64_easier_at;
       std::string sm64_rules;
       std::string sm64_goal;
@@ -806,6 +808,8 @@ namespace cryptonote
         KV_SERIALIZE(sm64_a_prob)
         KV_SERIALIZE(sm64_b_prob)
         KV_SERIALIZE(sm64_z_prob)
+        KV_SERIALIZE(sm64_timing_mix)
+        KV_SERIALIZE(sm64_pad_mix)
         KV_SERIALIZE(sm64_easier_at)
         KV_SERIALIZE(sm64_rules)
         KV_SERIALIZE(sm64_goal)
@@ -1017,6 +1021,8 @@ namespace cryptonote
       double sm64_a_prob;
       double sm64_b_prob;
       double sm64_z_prob;
+      uint32_t sm64_timing_mix; // SM64COIN: frames between state mixes into the poke timing stream (0: never)
+      uint32_t sm64_pad_mix; // SM64COIN: the same for the pad stream
       uint64_t sm64_retarget_difficulty;
       uint64_t sm64_easier_at;
       std::string sm64_rules;
@@ -1026,6 +1032,7 @@ namespace cryptonote
       // becomes allowed, the parent's progress, the cycle's first height.
       std::string sm64_start;
       uint64_t sm64_power_on_at;
+      uint64_t sm64_restart_delay; // SM64COIN: a restart's limit is the limit this many seconds earlier
       uint64_t sm64_parent_timestamp;
       uint32_t sm64_parent_stars;
       uint32_t sm64_parent_keys;
@@ -1059,12 +1066,15 @@ namespace cryptonote
         KV_SERIALIZE(sm64_a_prob)
         KV_SERIALIZE(sm64_b_prob)
         KV_SERIALIZE(sm64_z_prob)
+        KV_SERIALIZE(sm64_timing_mix)
+        KV_SERIALIZE(sm64_pad_mix)
         KV_SERIALIZE(sm64_retarget_difficulty)
         KV_SERIALIZE(sm64_easier_at)
         KV_SERIALIZE(sm64_rules)
         KV_SERIALIZE(sm64_goal)
         KV_SERIALIZE(sm64_start)
         KV_SERIALIZE(sm64_power_on_at)
+        KV_SERIALIZE_OPT(sm64_restart_delay, (uint64_t)0)
         KV_SERIALIZE(sm64_parent_timestamp)
         KV_SERIALIZE(sm64_parent_stars)
         KV_SERIALIZE(sm64_parent_keys)
@@ -1080,6 +1090,87 @@ namespace cryptonote
   // them on a fresh game from power-on (no perturbation needed: the pads are
   // the ones played) reaches that block's end state, where the next block's
   // run starts.
+  // SM64COIN: the shared mining leaderboard (cryptonote_core/sm64_board.h).
+  struct COMMAND_RPC_SM64_BOARD
+  {
+    struct request_t: public rpc_request_base
+    {
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_request_base)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct row
+    {
+      std::string name;
+      std::string address;
+      std::string view_key;
+      uint64_t timestamp;
+      std::string signature;
+      uint64_t blocks;
+      uint64_t reward;
+      uint64_t last_height;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(name)
+        KV_SERIALIZE(address)
+        KV_SERIALIZE(view_key)
+        KV_SERIALIZE(timestamp)
+        KV_SERIALIZE(signature)
+        KV_SERIALIZE(blocks)
+        KV_SERIALIZE(reward)
+        KV_SERIALIZE(last_height)
+      END_KV_SERIALIZE_MAP()
+    };
+
+    struct response_t: public rpc_response_base
+    {
+      std::vector<row> entries;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_response_base)
+        KV_SERIALIZE(entries)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  struct COMMAND_RPC_SM64_BOARD_JOIN
+  {
+    struct request_t: public rpc_request_base
+    {
+      std::string name;
+      std::string address;
+      std::string view_key;
+      uint64_t timestamp;
+      std::string signature; // SigV2 with the spend key over "sm64coin-board:<timestamp>:<name>"
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_request_base)
+        KV_SERIALIZE(name)
+        KV_SERIALIZE(address)
+        KV_SERIALIZE(view_key)
+        KV_SERIALIZE(timestamp)
+        KV_SERIALIZE(signature)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t: public rpc_response_base
+    {
+      bool joined; // on the board now (new, or renamed)
+      std::string reason; // why not
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_response_base)
+        KV_SERIALIZE(joined)
+        KV_SERIALIZE(reason)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
   struct COMMAND_RPC_GET_SM64_CYCLE
   {
     struct request_t: public rpc_request_base
@@ -1480,6 +1571,8 @@ namespace cryptonote
       double sm64_a_prob;
       double sm64_b_prob;
       double sm64_z_prob;
+      uint32_t sm64_timing_mix; // SM64COIN: frames between state mixes into the poke timing stream (0: never)
+      uint32_t sm64_pad_mix; // SM64COIN: the same for the pad stream
       
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_access_response_base)
@@ -1503,6 +1596,8 @@ namespace cryptonote
         KV_SERIALIZE(sm64_a_prob)
         KV_SERIALIZE(sm64_b_prob)
         KV_SERIALIZE(sm64_z_prob)
+        KV_SERIALIZE(sm64_timing_mix)
+        KV_SERIALIZE(sm64_pad_mix)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;

@@ -47,8 +47,15 @@ namespace sm64coin
   std::string block_event(const crypto::hash &id);
   // A proof's start: 0 from the parent's end state, 1 from power-on, -1 bad.
   int proof_start(const std::string &proof);
-  // Seconds without a block after which a block may start from power-on.
-  uint64_t stall_seconds();
+  // How many seconds earlier a power-on restart on top of a parent with this
+  // progress takes its limit (valid only that long after the parent); -1: not allowed.
+  int64_t restart_delay(const progress &parent);
+  // Fork choice by the number of blocks instead of cumulative difficulty.
+  bool weigh_by_blocks();
+  // The hold policy: 0 to process a block extending the tip now, else the unix second to hold it until.
+  uint64_t hold_until(const difficulty_type &difficulty, uint64_t parent_ts, uint64_t block_ts, uint64_t now, uint32_t frames, uint64_t restart_delay);
+  // No block but the genesis block may be timestamped before this.
+  uint64_t launch_timestamp();
   // The time limit of a block at retarget `difficulty`, `elapsed` seconds after its parent.
   uint32_t max_frames(const difficulty_type &difficulty, uint64_t elapsed);
   // The first word of a seed hash (display only).
@@ -79,6 +86,7 @@ namespace sm64coin
     uint32_t window_length;
     uint32_t burst_length;
     float a_prob, b_prob, z_prob;
+    uint32_t timing_mix, pad_mix; // simulated frames between state mixes into the poke streams (0: never)
   };
   task task_for(const difficulty_type &difficulty);
   std::string rules_name();
