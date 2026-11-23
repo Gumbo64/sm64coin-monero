@@ -5196,6 +5196,21 @@ bool Blockchain::prepare_handle_incoming_blocks(const std::vector<block_complete
       if (m_cancel)
          return false;
 
+      // SM64COIN: replay the batch's proofs in parallel, chain by chain (a
+      // chain starts at a power-on run or at a block whose parent's end state
+      // is cached), so the sequential check below finds each run and only
+      // re-checks the rules that depend on the timestamp and the parent.
+      {
+        const crypto::hash genesis = m_db->height() > 0 ? m_db->get_block_hash_from_height(0) : crypto::null_hash;
+        std::vector<sm64coin::preverify_block> batch;
+        batch.reserve(blocks.size());
+        for (const block &b : blocks)
+          batch.push_back({get_block_hash(b), b.prev_id, b.prev_id == genesis, sm64_seed(b), &b.sm64_proof});
+        const uint64_t replayed = sm64coin::preverify(batch, std::max<unsigned>(1, tools::get_max_concurrency()));
+        if (replayed)
+          MINFO("Proof-of-play: replayed " << replayed << " of " << batch.size() << " runs in parallel");
+      }
+
       for (const auto & map : maps)
       {
         m_blocks_longhash_table.insert(map.begin(), map.end());

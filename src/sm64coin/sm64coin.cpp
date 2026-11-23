@@ -77,6 +77,28 @@ namespace sm64coin
 
   bool has_state(const crypto::hash &id) { return sm64pow_has_state(u8(id)) == 1; }
 
+  int set_state_dir(const std::string &dir) { return sm64pow_set_state_dir(dir.c_str()); }
+
+  uint64_t preverify(const std::vector<preverify_block> &batch, unsigned threads)
+  {
+    if (!s_initialized || batch.empty())
+      return 0;
+    const size_t n = batch.size();
+    std::vector<uint8_t> ids(32 * n), parents(32 * n, 0), seeds(32 * n);
+    std::vector<uint64_t> offsets(n + 1, 0);
+    std::string blobs;
+    for (size_t i = 0; i < n; ++i)
+    {
+      memcpy(&ids[32 * i], &batch[i].id, 32);
+      if (!batch[i].genesis_parent)
+        memcpy(&parents[32 * i], &batch[i].parent, 32);
+      memcpy(&seeds[32 * i], &batch[i].seed, 32);
+      blobs += *batch[i].proof;
+      offsets[i + 1] = blobs.size();
+    }
+    return sm64pow_preverify(n, ids.data(), parents.data(), seeds.data(), u8(blobs), offsets.data(), threads);
+  }
+
   bool block_progress(const crypto::hash &id, progress &p)
   {
     int32_t g = 0, e = 0;

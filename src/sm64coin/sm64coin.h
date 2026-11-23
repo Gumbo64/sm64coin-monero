@@ -40,6 +40,16 @@ namespace sm64coin
   int64_t verify_block(const crypto::hash &id, const crypto::hash *parent, uint64_t gap, const crypto::hash &seed,
                        const difficulty_type &difficulty, const std::string &proof, std::string &why);
   bool has_state(const crypto::hash &id);
+
+  // The last few blocks' end states on disk in `dir` (loaded now): a restart
+  // needs no replay of the cycle. Returns how many were loaded, -1 on error.
+  int set_state_dir(const std::string &dir);
+
+  // The parallel pre-pass of a sync batch, in chain order (chain::preverify):
+  // replays the batch's proofs chain by chain on `threads` threads, so the
+  // sequential check finds each run. Validity is still decided there.
+  struct preverify_block { crypto::hash id; crypto::hash parent; bool genesis_parent; crypto::hash seed; const std::string *proof; };
+  uint64_t preverify(const std::vector<preverify_block> &batch, unsigned threads);
   struct progress { uint32_t stars = 0, keys = 0; bool grand_star = false, ends_cycle = false; };
   // A cached block's end progress. False if not cached.
   bool block_progress(const crypto::hash &id, progress &p);

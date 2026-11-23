@@ -706,6 +706,12 @@ namespace cryptonote
       0
     };
     const difficulty_type fixed_difficulty = command_line::get_arg(vm, arg_fixed_difficulty);
+    {
+      // SM64COIN: the last few blocks' end states survive a restart (no replay of the cycle).
+      const int loaded = sm64coin::set_state_dir(m_config_folder + "/sm64_states");
+      if (loaded > 0)
+        MINFO("Proof-of-play: " << loaded << " end states loaded from " << m_config_folder << "/sm64_states");
+    }
     r = m_blockchain_storage.init(db.release(), m_nettype, m_offline, regtest ? &regtest_test_options : test_options, fixed_difficulty, get_checkpoints);
     m_sm64_board.init(m_config_folder + "/sm64_board.json", m_nettype); // SM64COIN
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize blockchain storage");
