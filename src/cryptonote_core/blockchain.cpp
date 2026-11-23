@@ -6048,9 +6048,17 @@ bool Blockchain::sm64_hold(const block& b, const crypto::hash& id, const pool_su
     CRITICAL_REGION_LOCAL(m_sm64_held_lock);
     if (m_sm64_held.count(id))
       return true;
-    for (const auto &h : m_sm64_held)
-      if (h.second.seed == seed)
-        return true; // a copy of a held run (e.g. restamped): keep the first
+    for (auto it = m_sm64_held.begin(); it != m_sm64_held.end(); ++it)
+      if (it->second.seed == seed)
+      {
+        // The same template (a copy, or the miner's next run): keep the run
+        // that fits sooner, so a shorter run found later still wins the auction.
+        if (due >= it->second.due)
+          return true;
+        MINFO("Proof-of-play: block " << id << " fits sooner than held block " << it->first << " (same template): replacing it");
+        m_sm64_held.erase(it);
+        break;
+      }
     if (m_sm64_held.size() >= 64)
     {
       MWARNING("Proof-of-play: hold full, processing block " << id << " now");
