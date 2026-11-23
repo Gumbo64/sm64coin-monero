@@ -59,7 +59,6 @@
 #include "storages/levin_abstract_invoke2.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "net/parse.h"
-#include "sm64coin/seeds.h" // SM64COIN
 
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
@@ -511,7 +510,6 @@ namespace nodetool
       if (!parse_peers_and_add_to_container(vm, arg_p2p_add_priority_node, m_priority_peers))
         return false;
     }
-    for (const std::string &seed : sm64coin::seed_nodes(m_nettype)) { std::vector<epee::net_utils::network_address> a; if (!m_exclusive_peers.empty()) break; if (append_net_address(a, seed, cryptonote::get_config(m_nettype).P2P_DEFAULT_PORT)) m_priority_peers.insert(m_priority_peers.end(), a.begin(), a.end()); else MWARNING("Seed node " << seed << " doesn't resolve, skipped"); } // SM64COIN: built-in seeds, kept connected
 
     if (command_line::has_arg(vm, arg_p2p_seed_node))
     {
