@@ -2932,6 +2932,32 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_get_sm64_state(const COMMAND_RPC_GET_SM64_STATE::request& req, COMMAND_RPC_GET_SM64_STATE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    RPC_TRACKER(get_sm64_state);
+    crypto::hash id;
+    if (req.hash.empty())
+      id = m_core.get_tail_id();
+    else if (!epee::string_tools::hex_to_pod(req.hash, id))
+    {
+      error_resp.code = CORE_RPC_ERROR_CODE_WRONG_PARAM;
+      error_resp.message = "Invalid hash";
+      return false;
+    }
+    std::string gz;
+    if (!sm64coin::end_state_gz(id, gz))
+    {
+      error_resp.code = CORE_RPC_ERROR_CODE_WRONG_PARAM;
+      error_resp.message = "This block's end state isn't cached";
+      return false;
+    }
+    res.hash = epee::string_tools::pod_to_hex(id);
+    res.state_gz = epee::string_tools::buff_to_hex_nodelimer(gz);
+    res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  // SM64COIN
   bool core_rpc_server::on_get_sm64_cycle(const COMMAND_RPC_GET_SM64_CYCLE::request& req, COMMAND_RPC_GET_SM64_CYCLE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     RPC_TRACKER(get_sm64_cycle);

@@ -40,6 +40,8 @@ namespace sm64coin
   int64_t verify_block(const crypto::hash &id, const crypto::hash *parent, uint64_t gap, const crypto::hash &seed,
                        const difficulty_type &difficulty, const std::string &proof, std::string &why);
   bool has_state(const crypto::hash &id);
+  // Block `id`'s cached end state (the game's save state), gzip; false unless cached.
+  bool end_state_gz(const crypto::hash &id, std::string &out);
 
   // The last few blocks' end states on disk in `dir` (loaded now): a restart
   // needs no replay of the cycle. Returns how many were loaded, -1 on error.

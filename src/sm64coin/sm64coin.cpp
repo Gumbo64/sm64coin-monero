@@ -77,6 +77,15 @@ namespace sm64coin
 
   bool has_state(const crypto::hash &id) { return sm64pow_has_state(u8(id)) == 1; }
 
+  bool end_state_gz(const crypto::hash &id, std::string &out)
+  {
+    size_t n = sm64pow_end_state_gz(u8(id), nullptr, 0);
+    if (n == SIZE_MAX)
+      return false;
+    out.assign(n, '\0');
+    return sm64pow_end_state_gz(u8(id), reinterpret_cast<uint8_t *>(&out[0]), out.size()) == n;
+  }
+
   int set_state_dir(const std::string &dir) { return sm64pow_set_state_dir(dir.c_str()); }
 
   uint64_t preverify(const std::vector<preverify_block> &batch, unsigned threads)
