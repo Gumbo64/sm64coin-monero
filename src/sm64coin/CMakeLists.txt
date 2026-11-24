@@ -6,7 +6,7 @@ set(SM64POW_LIB "${SM64POW_DIR}/target/release/libsm64pow.a")
 
 # SM64COIN: every source of the crate and its perturbation crate triggers a rebuild (a stale
 # library once linked an old codec into the daemon).
-file(GLOB SM64POW_SOURCES CONFIGURE_DEPENDS "${SM64POW_DIR}/sm64pow/src/*.rs" "${SM64POW_DIR}/perturb/src/*.rs" "${SM64POW_DIR}/sm64pow/Cargo.toml")
+file(GLOB SM64POW_SOURCES CONFIGURE_DEPENDS "${SM64POW_DIR}/sm64pow/src/*.rs" "${SM64POW_DIR}/perturb/src/*.rs" "${SM64POW_DIR}/statecodec/src/*.rs" "${SM64POW_DIR}/sm64pow/Cargo.toml")
 
 add_custom_command(
   OUTPUT "${SM64POW_LIB}"
