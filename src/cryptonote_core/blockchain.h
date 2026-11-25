@@ -370,6 +370,12 @@ namespace cryptonote
     bool sm64_hold_alt(const block& b, const crypto::hash& id, const pool_supplement& extra); // the same for a sibling of the tip
     bool sm64_enqueue(const block& b, const crypto::hash& id, const pool_supplement& extra, uint64_t due, uint32_t frames);
     bool sm64_job(const block& b, const crypto::hash& id, sm64coin::queue_job& j) const;
+    // When `b` is due by this node's clock (0: now, or the normal path decides); false: no parent / bad proof.
+    bool sm64_due(const block& b, const difficulty_type& d, uint64_t& due) const;
+    // Why the last block this thread handed to add_new_block was refused by the replay queue's
+    // checks (one run per key, too early on restricted RPC, the queue or budget full); "" if not.
+    static std::string sm64_take_refusal();
+    static thread_local std::string s_sm64_refusal;
     // What the queue's workers ask: 0 parent not in our chain, 1 it is the tip, 2 it has a child (id, frames).
     int sm64_chain_facts(const crypto::hash& parent, crypto::hash& child, uint32_t& frames) const;
     void sm64_start_queue(unsigned threads);

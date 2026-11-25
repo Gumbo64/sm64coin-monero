@@ -2422,11 +2422,23 @@ namespace cryptonote
     sm64coin::source_scope sm64_source(sm64_host, sm64_host.empty() ? (sm64coin::source_kind)0 : sm64coin::source_rpc_submit); // SM64COIN
 
     block_verification_context bvc;
+    Blockchain::sm64_take_refusal(); // SM64COIN: (clear)
     if(!m_core.handle_block_found(b, bvc))
     {
       error_resp.code = CORE_RPC_ERROR_CODE_BLOCK_NOT_ACCEPTED;
       error_resp.message = "Block not accepted";
       return false;
+    }
+    {
+      // SM64COIN v0.3: the replay queue refused the claim (one run per key, too early, queue or budget full): say so,
+      // instead of OK for a block that will never be added.
+      const std::string refusal = Blockchain::sm64_take_refusal();
+      if (!refusal.empty())
+      {
+        error_resp.code = CORE_RPC_ERROR_CODE_BLOCK_NOT_ACCEPTED;
+        error_resp.message = "Block not accepted: " + refusal;
+        return false;
+      }
     }
     res.block_id = epee::string_tools::pod_to_hex(blk_id);
     res.status = CORE_RPC_STATUS_OK;

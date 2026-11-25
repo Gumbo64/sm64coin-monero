@@ -59,7 +59,8 @@ namespace sm64coin
   sibling judge_sibling(const crypto::hash &seed, const std::string &nonce, const std::string &main_proof, const crypto::signature &main_sig,
                         const std::string &alt_proof, const crypto::signature &alt_sig, std::string &evidence);
   // Evidence from a peer: true when new and valid (relay it).
-  bool evidence_received(const std::string &evidence);
+  // 1 new and valid (relay it), 0 not, -1 forged or malformed (drop the peer).
+  int evidence_received(const std::string &evidence);
   // The next new evidence to relay (NOTIFY_SM64_EVIDENCE); false: none.
   bool take_evidence(std::string &evidence);
   // Publish-on-find (pof.rs): `id` became eligible now; whether eligible
@@ -67,8 +68,12 @@ namespace sm64coin
   // `frames` stamped `timestamp` could (worth a replay); the freshness bound.
   void note_eligible(const crypto::hash &id, const crypto::hash &parent, const crypto::hash &seed, uint32_t frames, uint64_t timestamp);
   bool displaces(const crypto::hash &tip, const crypto::hash &alt);
-  bool pof_candidate(const crypto::hash &tip, uint32_t frames, uint64_t timestamp);
+  bool pof_candidate(const crypto::hash &tip, const crypto::hash &id, uint32_t frames, uint64_t timestamp); // judged when `id` became eligible here
   bool stale(uint64_t timestamp);
+  bool stale_block(const crypto::hash &id, uint64_t timestamp); // judged when `id` became eligible here (a queued claim: max(arrival, due))
+  // A copy of our block `tip`'s run (same seed, another stamp) that is the preferred copy (pof.rs restamp_preferred).
+  bool restamp_preferred(const crypto::hash &tip, const crypto::hash &seed, uint64_t timestamp, const crypto::hash &id);
+  uint64_t rpc_submit_ahead(); // restricted RPC: the most seconds ahead a submitted run may be due
   // Where to build when the childless tip has seed `tip_seed`: -1 the tip,
   // i < siblings.size() the i-th block at its height, siblings.size() its parent.
   int64_t choose_parent(const crypto::hash &tip_seed, const std::vector<crypto::hash> &sibling_seeds);

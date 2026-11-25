@@ -2696,8 +2696,15 @@ skip:
       LOG_DEBUG_CC(context, "SM64 evidence: " << arg.evidence.size() << " bytes, dropped");
       return 1;
     }
-    if (sm64coin::evidence_received(arg.evidence))
+    const int r = sm64coin::evidence_received(arg.evidence);
+    if (r == 1)
       MWARNING("Proof-of-play: equivocation evidence from " << context.m_remote_address.str());
+    else if (r < 0)
+    {
+      // Forged (signatures, or a key that isn't the template's): an honest node never relays that.
+      LOG_DEBUG_CC(context, "SM64 evidence: forged, dropping the connection");
+      drop_connection(context, false, false);
+    }
     return 1;
   }
   //------------------------------------------------------------------------------------------------------------------------

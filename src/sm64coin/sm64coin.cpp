@@ -160,9 +160,9 @@ namespace sm64coin
   }
   bool queue_take_cleared(const crypto::hash &id) { return sm64pow_queue_take_cleared(u8(id)) == 1; }
 
-  bool evidence_received(const std::string &evidence)
+  int evidence_received(const std::string &evidence)
   {
-    return sm64pow_evidence_received(u8(evidence), evidence.size()) == 1;
+    return sm64pow_evidence_received(u8(evidence), evidence.size());
   }
 
   bool take_evidence(std::string &evidence)
@@ -176,8 +176,14 @@ namespace sm64coin
     sm64pow_note_eligible(u8(id), u8(parent), u8(seed), frames, timestamp);
   }
   bool displaces(const crypto::hash &tip, const crypto::hash &alt) { return sm64pow_displaces(u8(tip), u8(alt)) == 1; }
-  bool pof_candidate(const crypto::hash &tip, uint32_t frames, uint64_t timestamp) { return sm64pow_pof_candidate(u8(tip), frames, timestamp) == 1; }
+  bool pof_candidate(const crypto::hash &tip, const crypto::hash &id, uint32_t frames, uint64_t timestamp) { return sm64pow_pof_candidate(u8(tip), u8(id), frames, timestamp) == 1; }
   bool stale(uint64_t timestamp) { return sm64pow_stale(timestamp) == 1; }
+  bool stale_block(const crypto::hash &id, uint64_t timestamp) { return sm64pow_stale_block(u8(id), timestamp) == 1; }
+  bool restamp_preferred(const crypto::hash &tip, const crypto::hash &seed, uint64_t timestamp, const crypto::hash &id)
+  {
+    return sm64pow_restamp_preferred(u8(tip), u8(seed), timestamp, u8(id)) == 1;
+  }
+  uint64_t rpc_submit_ahead() { return sm64pow_rpc_submit_ahead(); }
 
   int64_t choose_parent(const crypto::hash &tip_seed, const std::vector<crypto::hash> &sibling_seeds)
   {
