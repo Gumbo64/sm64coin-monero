@@ -120,6 +120,11 @@ namespace cryptonote
     }
   };
   // SM64COIN
+  const command_line::arg_descriptor<unsigned> arg_sm64_replay_threads = {
+    "sm64-replay-threads"
+  , "Worker threads that replay queued block claims outside the blockchain lock (0: every core)"
+  , 0
+  };
   const command_line::arg_descriptor<bool> arg_sm64_solo = {
     "sm64-solo"
   , "Count as synchronized without peers, so a lone node can mine (to bootstrap a new network). Peers are still used."
@@ -347,6 +352,7 @@ namespace cryptonote
     command_line::add_arg(desc, arg_test_dbg_lock_sleep);
     command_line::add_arg(desc, arg_offline);
     command_line::add_arg(desc, arg_sm64_solo); // SM64COIN
+    command_line::add_arg(desc, arg_sm64_replay_threads); // SM64COIN
     command_line::add_arg(desc, arg_disable_dns_checkpoints);
     command_line::add_arg(desc, arg_block_download_max_size);
     command_line::add_arg(desc, arg_sync_pruned_blocks);
@@ -715,6 +721,26 @@ namespace cryptonote
     r = m_blockchain_storage.init(db.release(), m_nettype, m_offline, regtest ? &regtest_test_options : test_options, fixed_difficulty, get_checkpoints);
     m_sm64_board.init(m_config_folder + "/sm64_board.json", m_nettype); // SM64COIN
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize blockchain storage");
+    {
+      // SM64COIN: the replay queue's workers (all cores by default) and the releaser that adds
+      // and relays a block once its claim has been replayed (Blockchain::sm64_hold).
+      unsigned threads = command_line::get_arg(vm, arg_sm64_replay_threads);
+      if (threads == 0)
+        threads = std::max(1u, std::thread::hardware_concurrency());
+      m_blockchain_storage.sm64_start_queue(threads);
+      m_sm64_stop = false;
+      m_sm64_releaser = std::thread([this]() {
+        while (!m_sm64_stop)
+        {
+          crypto::hash id;
+          std::string why;
+          const int v = sm64coin::queue_wait(200, id, why);
+          if (v >= 0)
+            sm64_release(id, v, why);
+        }
+      });
+      MINFO("Proof-of-play: replay queue with " << threads << " worker threads");
+    }
 
     r = m_mempool.init(max_txpool_weight, m_nettype == FAKECHAIN);
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize memory pool");
@@ -788,6 +814,9 @@ namespace cryptonote
   //-----------------------------------------------------------------------------------------------
     bool core::deinit()
   {
+    m_sm64_stop = true; // SM64COIN
+    if (m_sm64_releaser.joinable())
+      m_sm64_releaser.join();
     m_miner.stop();
     m_mempool.deinit();
     m_blockchain_storage.deinit();
@@ -1342,6 +1371,7 @@ namespace cryptonote
       m_miner.resume();
       return false;
     }
+    m_blockchain_storage.sm64_prereplay(b); // SM64COIN: this node's own block is replayed here, outside the blockchain lock
     m_blockchain_storage.add_new_block(b, bvc);
     cleanup_handle_incoming_blocks(true);
     //anyway - update miner template
@@ -1607,26 +1637,36 @@ namespace cryptonote
     return true;
   }
   //-----------------------------------------------------------------------------------------------
-  void core::sm64_release_held()
+  void core::sm64_release(const crypto::hash &id, int verdict, const std::string &why)
   {
-    // SM64COIN: the hold policy (Blockchain::sm64_hold): process held blocks
-    // once their run fits the limit by this node's clock, and relay them.
-    std::vector<std::pair<block, pool_supplement>> due;
-    m_blockchain_storage.sm64_take_due(due);
-    for (auto &d : due)
+    // SM64COIN: the replay queue has a verdict for a claim (Blockchain::sm64_hold). Invalid
+    // or skipped claims are dropped; a valid one's end state is cached, so adding the block
+    // finds the result instead of replaying under the lock. Relay only after it is added.
+    block b;
+    pool_supplement extra;
+    if (!m_blockchain_storage.sm64_take_held(id, b, extra))
+      return;
+    if (verdict == 0 || verdict == 2)
     {
-      block_verification_context bvc{};
-      const blobdata blob = block_to_blob(d.first);
-      handle_single_incoming_block(blob, &d.first, bvc, d.second, true);
-      if (bvc.m_added_to_main_chain)
-      {
-        MINFO("Proof-of-play: held block " << get_block_hash(d.first) << " accepted, relaying");
-        cryptonote_connection_context exclude_context = {};
-        NOTIFY_NEW_FLUFFY_BLOCK::request arg{};
-        arg.current_blockchain_height = get_block_height(d.first) + 1;
-        arg.b.block = blob;
-        m_pprotocol->relay_block(arg, exclude_context);
-      }
+      MINFO("Proof-of-play: queued block " << id << (verdict == 0 ? " is invalid: " : " dropped without a replay: ") << why);
+      return;
+    }
+    block_verification_context bvc{};
+    const blobdata blob = block_to_blob(b);
+    {
+      std::unique_ptr<Blockchain::sm64_bypass_scope> bypass;
+      if (verdict == 3)
+        bypass.reset(new Blockchain::sm64_bypass_scope()); // not decided by the queue: verify the old way
+      handle_single_incoming_block(blob, &b, bvc, extra, true);
+    }
+    if (bvc.m_added_to_main_chain && !bvc.m_sm64_stale)
+    {
+      MINFO("Proof-of-play: queued block " << id << " accepted, relaying");
+      cryptonote_connection_context exclude_context = {};
+      NOTIFY_NEW_FLUFFY_BLOCK::request arg{};
+      arg.current_blockchain_height = get_block_height(b) + 1;
+      arg.b.block = blob;
+      m_pprotocol->relay_block(arg, exclude_context);
     }
   }
   //-----------------------------------------------------------------------------------------------
@@ -1675,7 +1715,6 @@ namespace cryptonote
       m_starter_message_showed = true;
     }
 
-    sm64_release_held(); // SM64COIN: held blocks whose run now fits by our clock
     sm64_board_tick(); // SM64COIN: the leaderboard
     {
       // SM64COIN v0.3: relay new equivocation evidence (pow/sm64pow/src/equivocation.rs).

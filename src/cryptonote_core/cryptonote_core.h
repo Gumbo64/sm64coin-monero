@@ -29,6 +29,8 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #pragma once
+#include <thread> // SM64COIN
+#include <atomic> // SM64COIN
 
 #include <ctime>
 
@@ -113,7 +115,7 @@ namespace cryptonote
       *
       * @return true
       */
-     void sm64_release_held(); // SM64COIN
+     void sm64_release(const crypto::hash &id, int verdict, const std::string &why); // SM64COIN: the replay queue's verdict for a claim
      // SM64COIN: the shared mining leaderboard (sm64_board.h). Offer admits
      // and relays what changes the board.
      std::vector<sm64_board_entry> sm64_board_offer(const std::vector<sm64_board_entry> &entries, const boost::uuids::uuid &source, std::string *why = nullptr);
@@ -1101,6 +1103,8 @@ namespace cryptonote
      epee::math_helper::once_a_time_seconds<60*60*5, true> m_blockchain_pruning_interval; //!< interval for incremental blockchain pruning
      epee::math_helper::once_a_time_seconds<60*60*24*7, false> m_diff_recalc_interval; //!< interval for recalculating difficulties
      sm64_board m_sm64_board; // SM64COIN
+     std::thread m_sm64_releaser; // SM64COIN: adds and relays claims the replay queue verified
+     std::atomic<bool> m_sm64_stop{false}; // SM64COIN
      epee::math_helper::once_a_time_seconds<20, true> m_sm64_board_scan; // SM64COIN: count new blocks
      epee::math_helper::once_a_time_seconds<120, false> m_sm64_board_share; // SM64COIN: send the board to every peer
 

@@ -360,18 +360,28 @@ namespace cryptonote
     bool sm64_cycle(const crypto::hash& tip, std::vector<block>& blocks) const;
     // `tip`'s end progress (rebuilding its state if needed).
     bool sm64_progress(const crypto::hash& tip, sm64coin::progress& p) const;
-    // The hold policy: a block extending the tip whose run is valid at its own
-    // timestamp but doesn't fit the limit yet by this node's clock is held (not
-    // rejected, its peer not punished) until it does, so stamping ahead wins
-    // nothing here. True: held. One block per seed (restamped copies of a run
-    // share it), at most 64.
-    bool sm64_hold(const block& b, const crypto::hash& id, const pool_supplement& extra, bool* held = nullptr); // SM64COIN v0.3: *held = valid and held: relay it now
+    // The replay queue (pow/sm64pow/src/queue.rs, docs/DOS.md): a block that arrives
+    // unasked (relayed, restricted RPC) or is not due yet is not replayed here under the
+    // blockchain lock. sm64_hold does the cheap checks (signature, one run per key, the
+    // source's budget) and queues it by its due time; true: queued or dropped, not
+    // processed now. A worker replays it when due and only if it could matter; the
+    // daemon's releaser then adds it (the check under the lock finds the cached result).
+    bool sm64_hold(const block& b, const crypto::hash& id, const pool_supplement& extra, bool* held = nullptr);
+    bool sm64_hold_alt(const block& b, const crypto::hash& id, const pool_supplement& extra); // the same for a sibling of the tip
+    bool sm64_enqueue(const block& b, const crypto::hash& id, const pool_supplement& extra, uint64_t due, uint32_t frames);
+    bool sm64_job(const block& b, const crypto::hash& id, sm64coin::queue_job& j) const;
+    // What the queue's workers ask: 0 parent not in our chain, 1 it is the tip, 2 it has a child (id, frames).
+    int sm64_chain_facts(const crypto::hash& parent, crypto::hash& child, uint32_t& frames) const;
+    void sm64_start_queue(unsigned threads);
+    void sm64_prereplay(const block& b); // this node's own miner's block: replayed on the caller's thread, outside the lock
+    // Removes and returns the claim held for `id` (the releaser, when the queue has a verdict).
+    bool sm64_take_held(const crypto::hash& id, block& b, pool_supplement& extra);
+    // While alive, sm64_hold lets this thread's blocks through (the queue could not decide them).
+    struct sm64_bypass_scope { sm64_bypass_scope(); ~sm64_bypass_scope(); };
     // SM64COIN: whether to skip (not replay, not store) an alternative block
     // at `height` that cannot matter yet: the admission policy (pow/sm64pow/src/admit.rs, docs/DOS.md).
     bool sm64_skip_alt(const block& b, const crypto::hash& id, uint64_t height) const;
     bool sm64_displaces(const std::list<block_extended_info>& alt_chain) const; // SM64COIN v0.3
-    // Removes and returns the held blocks whose time has come.
-    void sm64_take_due(std::vector<std::pair<block, pool_supplement>>& due);
     // When block `id` is held, the unix time it is due (0: not held).
     uint64_t sm64_held_until(const crypto::hash& id) const;
 

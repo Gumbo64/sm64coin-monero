@@ -48,9 +48,14 @@ namespace sm64coin
                               const difficulty_type &difficulty, const std::string &proof, const std::string &nonce,
                               const crypto::signature &sig, std::string &why);
   bool check_signature(const crypto::hash &seed, const std::string &proof, const std::string &nonce, const crypto::signature &sig, std::string &why);
-  // Equivocation (equivocation.rs, relay policy): a second run (alt_proof,
-  // alt_sig) for the template of our accepted block (main_proof, main_sig).
-  enum sibling { sibling_same = 0, sibling_shorter = 1, sibling_longer = 2, sibling_bad_sig = 3, sibling_equivocation = 4, sibling_known_evidence = 5, sibling_error = -1 };
+  // One run per key (equivocation.rs, relay policy): the signed run of a
+  // template, the first one seen is its claim. note_claim: 0 bad signature,
+  // 1 the first run, 2 the same run again, 3 a different run (equivocation:
+  // evidence kept and queued for relay; don't replay or relay this block). No replay.
+  int note_claim(const crypto::hash &seed, const std::string &proof, const std::string &nonce, const crypto::signature &sig, std::string &why);
+  // A block already in our chain vs another run for its template (the claims
+  // are forgotten at a restart): any other signed run is equivocation.
+  enum sibling { sibling_same = 0, sibling_bad_sig = 3, sibling_equivocation = 4, sibling_known_evidence = 5, sibling_error = -1 };
   sibling judge_sibling(const crypto::hash &seed, const std::string &nonce, const std::string &main_proof, const crypto::signature &main_sig,
                         const std::string &alt_proof, const crypto::signature &alt_sig, std::string &evidence);
   // Evidence from a peer: true when new and valid (relay it).
@@ -67,6 +72,22 @@ namespace sm64coin
   // Where to build when the childless tip has seed `tip_seed`: -1 the tip,
   // i < siblings.size() the i-th block at its height, siblings.size() its parent.
   int64_t choose_parent(const crypto::hash &tip_seed, const std::vector<crypto::hash> &sibling_seeds);
+
+  // The replay queue (queue.rs, docs/DOS.md): claims that arrive one at a time
+  // are replayed when due, on a worker pool, outside the blockchain lock.
+  // facts(parent): 0 the parent is not in our main chain, 1 it is the tip, 2 it
+  // has a main-chain child (its id and frames out). Called from worker threads.
+  typedef int (*queue_facts_cb)(const crypto::hash &parent, crypto::hash &child, uint32_t &child_frames);
+  void queue_start(queue_facts_cb cb, unsigned threads);
+  struct queue_job { crypto::hash id, parent, seed; bool genesis_parent; uint64_t gap, stamp, due; uint64_t difficulty; const std::string *proof; uint32_t frames; };
+  // 0 queued, 1 already known, 2 full, 3 this source sent an invalid claim recently (`why`). Source: this thread's source_scope.
+  int queue_submit(const queue_job &j, std::string &why);
+  // Replays now, on this thread (outside any lock). 1 valid, 0 invalid, 2 skipped, 3 not decided here.
+  int queue_replay_now(const queue_job &j, std::string &why);
+  // The next finished claim (waits up to timeout_ms): 1 valid, 0 invalid, 2 skipped, 3 process normally, -1 none.
+  int queue_wait(unsigned timeout_ms, crypto::hash &id, std::string &why);
+  // Whether `id` was replayed valid and is waiting to be added (consumes it).
+  bool queue_take_cleared(const crypto::hash &id);
   bool has_state(const crypto::hash &id);
   // Block `id`'s cached end state (the game's save state), gzip; false unless cached.
   bool end_state_gz(const crypto::hash &id, std::string &out);
@@ -137,6 +158,8 @@ namespace sm64coin
   // main_seed: the seed of our main-chain block at that height, if any. False: skip it, `why` says why.
   bool admit_alt(const crypto::hash &id, const crypto::hash &parent, const crypto::hash &seed, uint32_t frames,
                  uint64_t height, uint64_t top, const crypto::hash *main_seed, std::string &why);
+  // The kind of this thread's source scope, 0 if none.
+  source_kind current_source();
   // Whether to replay a block extending the tip, claiming `frames` (charged to this thread's source).
   bool admit_relay(uint32_t frames, std::string &why);
   // Whether a restricted-RPC client may submit a block now.

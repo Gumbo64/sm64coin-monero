@@ -113,6 +113,53 @@ namespace sm64coin
     return static_cast<sibling>(r);
   }
 
+  int note_claim(const crypto::hash &seed, const std::string &proof, const std::string &nonce, const crypto::signature &sig, std::string &why)
+  {
+    const int r = sm64pow_note_claim(u8(seed), u8(proof), proof.size(), u8(nonce), nonce.size(), sig8(sig));
+    if (r <= 0)
+      why = last_error();
+    return r < 0 ? 0 : r;
+  }
+
+  static queue_facts_cb g_facts_cb = nullptr;
+  static int32_t facts_trampoline(const uint8_t *parent, uint8_t *child_id, uint32_t *child_frames)
+  {
+    crypto::hash p, c;
+    memcpy(p.data, parent, 32);
+    c = crypto::null_hash;
+    const int r = g_facts_cb(p, c, *child_frames);
+    memcpy(child_id, c.data, 32);
+    return r;
+  }
+  void queue_start(queue_facts_cb cb, unsigned threads)
+  {
+    g_facts_cb = cb;
+    sm64pow_queue_set_threads(threads);
+    sm64pow_queue_set_facts(&facts_trampoline);
+  }
+  int queue_submit(const queue_job &j, std::string &why)
+  {
+    const int r = sm64pow_queue_submit(u8(j.id), u8(j.parent), j.genesis_parent, j.gap, u8(j.seed), j.difficulty, u8(*j.proof), j.proof->size(), j.frames, j.stamp, j.due);
+    if (r >= 2)
+      why = last_error();
+    return r;
+  }
+  int queue_replay_now(const queue_job &j, std::string &why)
+  {
+    const int r = sm64pow_queue_replay_now(u8(j.id), u8(j.parent), j.genesis_parent, j.gap, u8(j.seed), j.difficulty, u8(*j.proof), j.proof->size(), j.frames, j.stamp);
+    if (r == 0 || r == 2)
+      why = last_error();
+    return r;
+  }
+  int queue_wait(unsigned timeout_ms, crypto::hash &id, std::string &why)
+  {
+    const int r = sm64pow_queue_wait(timeout_ms, reinterpret_cast<uint8_t *>(id.data));
+    if (r == 0 || r == 2)
+      why = last_error();
+    return r;
+  }
+  bool queue_take_cleared(const crypto::hash &id) { return sm64pow_queue_take_cleared(u8(id)) == 1; }
+
   bool evidence_received(const std::string &evidence)
   {
     return sm64pow_evidence_received(u8(evidence), evidence.size()) == 1;
@@ -256,6 +303,8 @@ namespace sm64coin
     why = last_error();
     return false;
   }
+  source_kind current_source() { return static_cast<source_kind>(sm64pow_source_kind()); }
+
   bool admit_relay(uint32_t frames, std::string &why)
   {
     if (sm64pow_admit_relay(frames))
