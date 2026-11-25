@@ -661,6 +661,7 @@ namespace cryptonote
 
     // try adding block to the blockchain
     block_verification_context bvc = {}; 
+    sm64coin::source_scope sm64_source(context.m_remote_address.host_str(), sm64coin::source_relay); // SM64COIN: unasked: the admission policy applies (admit.rs)
     const bool handle_block_res = m_core.handle_single_incoming_block(arg.b.block,
       &new_block,
       bvc,
@@ -1512,6 +1513,7 @@ namespace cryptonote
 
           uint64_t block_process_time_full = 0, transactions_process_time_full = 0;
           size_t num_txs = 0, blockidx = 0;
+          sm64coin::source_scope sm64_source(span_origin.host_str(), sm64coin::source_sync, start_height + blocks.size() - 1); // SM64COIN: a span we asked for (admit.rs)
           for(const block_complete_entry& block_entry: blocks)
           {
             if (m_stopping)

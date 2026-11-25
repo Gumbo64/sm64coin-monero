@@ -174,6 +174,42 @@ namespace sm64coin
   bool decode_raw(const std::string &proof, std::string &raw) { return size_then_fill(sm64pow_decode_raw, proof, raw); }
   bool reencode(const std::string &proof, std::string &out) { return size_then_fill(sm64pow_reencode, proof, out); }
 
+  source_scope::source_scope(const std::string &host, source_kind kind, uint64_t top)
+    : m_handle(sm64pow_source_enter(host.c_str(), (int32_t)kind, top))
+  {
+  }
+  source_scope::~source_scope()
+  {
+    sm64pow_source_leave(m_handle);
+  }
+  bool admit_alt(const crypto::hash &id, const crypto::hash &parent, const crypto::hash &seed, uint32_t frames,
+                 uint64_t height, uint64_t top, const crypto::hash *main_seed, std::string &why)
+  {
+    const auto p = [](const crypto::hash &h) { return reinterpret_cast<const uint8_t *>(h.data); };
+    if (sm64pow_admit_alt(p(id), p(parent), p(seed), frames, height, top, main_seed ? p(*main_seed) : nullptr))
+      return true;
+    why = last_error();
+    return false;
+  }
+  bool admit_relay(uint32_t frames, std::string &why)
+  {
+    if (sm64pow_admit_relay(frames))
+      return true;
+    why = last_error();
+    return false;
+  }
+  bool rpc_submit_allowed(const std::string &host)
+  {
+    return sm64pow_rpc_submit_allowed(host.c_str()) != 0;
+  }
+  rpc_scope::rpc_scope() : m_handle(sm64pow_rpc_enter())
+  {
+  }
+  rpc_scope::~rpc_scope()
+  {
+    sm64pow_rpc_leave(m_handle);
+  }
+
   uint32_t proof_frames(const std::string &proof)
   {
     return sm64pow_proof_frames(reinterpret_cast<const uint8_t *>(proof.data()), proof.size());

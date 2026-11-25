@@ -90,6 +90,41 @@ namespace sm64coin
   // Frames the proof's run lasted (0 if it doesn't decode).
   uint32_t proof_frames(const std::string &proof);
 
+  // Admission policy (pow/sm64pow/src/admit.rs, docs/DOS.md): which blocks
+  // earn a replay. Relay policy, not consensus.
+  // Where the blocks handled on this thread come from, while in scope.
+  enum source_kind { source_relay = 1, source_sync = 2, source_rpc_submit = 3 };
+  class source_scope
+  {
+  public:
+    // `top`: for source_sync, the height of the span's last block.
+    source_scope(const std::string &host, source_kind kind, uint64_t top = 0);
+    ~source_scope();
+    source_scope(const source_scope &) = delete;
+    source_scope &operator=(const source_scope &) = delete;
+  private:
+    void *m_handle;
+  };
+  // Whether to replay an alternative block at `height` (our tip at `top`);
+  // main_seed: the seed of our main-chain block at that height, if any. False: skip it, `why` says why.
+  bool admit_alt(const crypto::hash &id, const crypto::hash &parent, const crypto::hash &seed, uint32_t frames,
+                 uint64_t height, uint64_t top, const crypto::hash *main_seed, std::string &why);
+  // Whether to replay a block extending the tip, claiming `frames` (charged to this thread's source).
+  bool admit_relay(uint32_t frames, std::string &why);
+  // Whether a restricted-RPC client may submit a block now.
+  bool rpc_submit_allowed(const std::string &host);
+  // An RPC call that may replay, while in scope: its replays draw on the RPC replay budget.
+  class rpc_scope
+  {
+  public:
+    rpc_scope();
+    ~rpc_scope();
+    rpc_scope(const rpc_scope &) = delete;
+    rpc_scope &operator=(const rpc_scope &) = delete;
+  private:
+    void *m_handle;
+  };
+
   struct task
   {
     uint64_t difficulty;

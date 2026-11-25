@@ -2013,6 +2013,7 @@ namespace cryptonote
     blobdata hashing_blob = get_block_hashing_blob(b);
     {
       // SM64COIN: the task, at the template's timestamp.
+      sm64coin::rpc_scope sm64_rpc; // replays (a template on an old block) draw on the RPC replay budget
       const Blockchain &bc = m_core.get_blockchain_storage();
       const difficulty_type eff = bc.sm64_effective_difficulty(b, wdiff);
       const sm64coin::task t = sm64coin::task_for(eff);
@@ -2380,6 +2381,16 @@ namespace cryptonote
         return false;
       }
     }
+
+    // SM64COIN: on restricted RPC a block costs a replay to check: the admission policy (admit.rs) budgets it per address.
+    const std::string sm64_host = m_restricted && ctx ? ctx->m_remote_address.host_str() : std::string();
+    if (!sm64_host.empty() && !sm64coin::rpc_submit_allowed(sm64_host))
+    {
+      error_resp.code = CORE_RPC_ERROR_CODE_BLOCK_NOT_ACCEPTED;
+      error_resp.message = "Busy: this address sent an invalid proof recently, retry later";
+      return false;
+    }
+    sm64coin::source_scope sm64_source(sm64_host, sm64_host.empty() ? (sm64coin::source_kind)0 : sm64coin::source_rpc_submit); // SM64COIN
 
     block_verification_context bvc;
     if(!m_core.handle_block_found(b, bvc))
@@ -2871,6 +2882,7 @@ namespace cryptonote
       // The proof holds the inputs of the non-poked frames; pokes are
       // regenerated from the seed. sm64_played (opt-in: replays the run) gives
       // every frame's played pad, e.g. for .m64 export.
+      sm64coin::rpc_scope sm64_rpc; // SM64COIN: replays (sm64_played) draw on the RPC replay budget
       if (sm64coin::decode_raw(blk.sm64_proof, raw))
         res.sm64_pads = string_tools::buff_to_hex_nodelimer(raw);
       else if (req.sm64_played && block_height > 0 && m_core.get_blockchain_storage().sm64_played(blk, raw, true))
@@ -2961,6 +2973,7 @@ namespace cryptonote
   bool core_rpc_server::on_get_sm64_cycle(const COMMAND_RPC_GET_SM64_CYCLE::request& req, COMMAND_RPC_GET_SM64_CYCLE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     RPC_TRACKER(get_sm64_cycle);
+    sm64coin::rpc_scope sm64_rpc; // SM64COIN: replays draw on the RPC replay budget
     const Blockchain &bc = m_core.get_blockchain_storage();
     crypto::hash tip;
     if (req.hash.empty())

@@ -1934,6 +1934,7 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
       bvc.m_verifivation_failed = true;
       return false;
     }
+    if (sm64_skip_alt(b, id, bei.height)) return false; // SM64COIN: replay only alternative blocks that can matter (admit.rs)
 
     bool is_a_checkpoint;
     if(!m_checkpoints.check_block(bei.height, id, is_a_checkpoint))
@@ -6041,6 +6042,15 @@ bool Blockchain::sm64_hold(const block& b, const crypto::hash& id, const pool_su
   const uint32_t frames = sm64coin::proof_frames(b.sm64_proof);
   if (frames == 0)
     return false; // doesn't decode: the normal path rejects it
+  {
+    // The admission policy (admit.rs): a block that came unasked is charged to its source's replay budget.
+    std::string why;
+    if (!sm64coin::admit_relay(frames, why))
+    {
+      MINFO("Proof-of-play: not replaying block " << id << " (" << frames << " frames): " << why);
+      return true; // dropped: not processed, not relayed, its sender not punished
+    }
+  }
   const difficulty_type d = get_difficulty_for_next_block();
   // A restart is judged against the limit `delay` seconds earlier.
   uint64_t delay = 0;
@@ -6068,20 +6078,22 @@ bool Blockchain::sm64_hold(const block& b, const crypto::hash& id, const pool_su
     if (m_sm64_held.count(id))
       return true;
     for (auto it = m_sm64_held.begin(); it != m_sm64_held.end(); ++it)
+      if (it->second.b.prev_id == b.prev_id && due >= it->second.due)
+        return true; // a valid run on the same parent fits as soon or sooner: this one can't win (not replayed)
+    for (auto it = m_sm64_held.begin(); it != m_sm64_held.end(); ++it)
       if (it->second.seed == seed)
       {
         // The same template (a copy, or the miner's next run): keep the run
         // that fits sooner, so a shorter run found later still wins the auction.
-        if (due >= it->second.due)
-          return true;
         MINFO("Proof-of-play: block " << id << " fits sooner than held block " << it->first << " (same template): replacing it");
         m_sm64_held.erase(it);
         break;
       }
     if (m_sm64_held.size() >= 64)
     {
-      MWARNING("Proof-of-play: hold full, processing block " << id << " now");
-      return false;
+      // Not "process now": the normal path would reject it as too long and punish its sender.
+      MWARNING("Proof-of-play: hold full, dropping block " << id);
+      return true;
     }
   }
   // Only a valid run is held (the replay also caches its end state).
@@ -6090,6 +6102,27 @@ bool Blockchain::sm64_hold(const block& b, const crypto::hash& id, const pool_su
   CRITICAL_REGION_LOCAL(m_sm64_held_lock);
   m_sm64_held[id] = sm64_held_block{b, extra, due, seed};
   MINFO("Proof-of-play: holding block " << id << " (" << frames << " frames) for " << (due - now) << " s, until its run fits by this node's clock");
+  return true;
+}
+//------------------------------------------------------------------
+bool Blockchain::sm64_skip_alt(const block& b, const crypto::hash& id, uint64_t height) const
+{
+  // The facts; the decision is pow/sm64pow's (admit.rs).
+  const uint64_t top = m_db->height() - 1;
+  crypto::hash main_seed;
+  const bool have_main = height <= top;
+  if (have_main)
+  {
+    block m;
+    if (!get_block_by_hash(m_db->get_block_hash_from_height(height), m))
+      return false;
+    main_seed = sm64_seed(m);
+  }
+  std::string why;
+  const uint32_t frames = sm64coin::proof_frames(b.sm64_proof);
+  if (sm64coin::admit_alt(id, b.prev_id, sm64_seed(b), frames, height, top, have_main ? &main_seed : nullptr, why))
+    return false;
+  MINFO("Proof-of-play: not replaying alternative block " << id << " at height " << height << ": " << why);
   return true;
 }
 //------------------------------------------------------------------

@@ -363,6 +363,9 @@ namespace cryptonote
     // nothing here. True: held. One block per seed (restamped copies of a run
     // share it), at most 64.
     bool sm64_hold(const block& b, const crypto::hash& id, const pool_supplement& extra);
+    // SM64COIN: whether to skip (not replay, not store) an alternative block
+    // at `height` that cannot matter yet: the admission policy (pow/sm64pow/src/admit.rs, docs/DOS.md).
+    bool sm64_skip_alt(const block& b, const crypto::hash& id, uint64_t height) const;
     // Removes and returns the held blocks whose time has come.
     void sm64_take_due(std::vector<std::pair<block, pool_supplement>>& due);
     // When block `id` is held, the unix time it is due (0: not held).
