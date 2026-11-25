@@ -1621,6 +1621,7 @@ namespace cryptonote
       uint64_t height;
       bool fill_pow_hash;
       bool sm64_played; // SM64COIN: also replay the run for every frame's played pad
+      int32_t sm64_codec; // SM64COIN v0.4: unrestricted only: the proof in this stateless codec (0 raw, 1 run-length, 2 xz; -1 as stored)
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_access_request_base)
@@ -1628,6 +1629,7 @@ namespace cryptonote
         KV_SERIALIZE(height)
         KV_SERIALIZE_OPT(fill_pow_hash, false);
         KV_SERIALIZE_OPT(sm64_played, false);
+        KV_SERIALIZE_OPT(sm64_codec, (int32_t)-1);
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
@@ -1657,6 +1659,8 @@ namespace cryptonote
       double sm64_z_prob;
       uint32_t sm64_timing_mix; // SM64COIN: frames between state mixes into the poke timing stream (0: never)
       uint32_t sm64_pad_mix; // SM64COIN: the same for the pad stream
+      std::string sm64_input_hash; // SM64COIN v0.4: the committed input hash (what the block id commits to for the proof)
+      int32_t sm64_codec; // SM64COIN v0.4: the codec id of the returned proof's encoding (-1 none)
       
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_access_response_base)
@@ -1682,6 +1686,8 @@ namespace cryptonote
         KV_SERIALIZE(sm64_z_prob)
         KV_SERIALIZE(sm64_timing_mix)
         KV_SERIALIZE(sm64_pad_mix)
+        KV_SERIALIZE(sm64_input_hash)
+        KV_SERIALIZE(sm64_codec)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;

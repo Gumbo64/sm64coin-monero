@@ -2912,6 +2912,37 @@ namespace cryptonote
     {
       res.tx_hashes.push_back(epee::string_tools::pod_to_hex(blk.tx_hashes[n]));
     }
+    if (req.sm64_codec >= 0 && !restricted) // SM64COIN v0.4: the proof in a stateless codec the caller asked for (the block id doesn't change)
+    {
+      if (req.sm64_codec > 2)
+      {
+        error_resp.code = CORE_RPC_ERROR_CODE_WRONG_PARAM;
+        error_resp.message = "sm64_codec: only the stateless codecs 0, 1 and 2 can be asked for";
+        return false;
+      }
+      std::string mask(32, '\0'), inputs, proof, why;
+      mask[0] = (char)(1 << req.sm64_codec);
+      const int need = sm64coin::codecs_need(blk.sm64_proof, mask);
+      if (need == 2 && !m_core.get_blockchain_storage().sm64_played(blk, inputs, true))
+      {
+        error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
+        error_resp.message = "sm64_codec: the run's inputs are not available (replay failed)";
+        return false;
+      }
+      if (need != 0)
+      {
+        if (!sm64coin::transcode(blk.sm64_proof, need == 2 ? &inputs : nullptr, mask, proof, why) || proof.empty())
+        {
+          error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
+          error_resp.message = "sm64_codec: " + why;
+          return false;
+        }
+        blk.sm64_proof = proof;
+        blk.invalidate_hashes();
+      }
+    }
+    res.sm64_input_hash = string_tools::pod_to_hex(sm64coin::proof_id(blk.sm64_proof)); // SM64COIN v0.4
+    res.sm64_codec = sm64coin::proof_codec(blk.sm64_proof); // SM64COIN v0.4
     res.blob = string_tools::buff_to_hex_nodelimer(t_serializable_object_to_blob(blk));
     res.json = obj_to_json_str(blk);
     {

@@ -167,6 +167,16 @@ namespace sm64coin
   bool decode_raw(const std::string &proof, std::string &raw);
   // Re-encodes with the smallest codec; the block id is unchanged.
   bool reencode(const std::string &proof, std::string &out);
+  // SM64COIN v0.4 codec negotiation (codecs.rs, node policy): this node's advert (NOTIFY_SM64_CODECS);
+  // a peer's set (32 bytes, a bit per codec id) from its advert (empty: the baseline 0-2); what
+  // sending `proof` to a peer with set `mask` (empty: the baseline) needs (0 nothing, 1 a stateless
+  // transcode, 2 the run's inputs first); the proof for that peer (same header, same block id),
+  // `inputs` the run's inputs for a state-coded proof (may be null); a proof's codec id (-1 none).
+  std::string codecs_advert();
+  std::string codecs_mask(const std::string &advert);
+  int codecs_need(const std::string &proof, const std::string &mask);
+  bool transcode(const std::string &proof, const std::string *inputs, const std::string &mask, std::string &out, std::string &why);
+  int proof_codec(const std::string &proof);
   // Frames the proof's run lasted (0 if it doesn't decode).
   uint32_t proof_frames(const std::string &proof);
 

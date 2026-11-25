@@ -228,6 +228,7 @@ namespace cryptonote
     LOG_PRINT_CCONTEXT_L2("callback fired");
     CHECK_AND_ASSERT_MES_CC( context.m_callback_request_count > 0, false, "false callback fired, but context.m_callback_request_count=" << context.m_callback_request_count);
     --context.m_callback_request_count;
+    sm64_send_codecs(context); // SM64COIN v0.4: before our first request, so the peer serves us codecs we decode
 
     uint32_t notified = true;
     if (context.m_idle_peer_notification.compare_exchange_strong(notified, not notified))
@@ -785,6 +786,11 @@ namespace cryptonote
     txids.reserve(b.tx_hashes.size());
     NOTIFY_NEW_FLUFFY_BLOCK::request fluffy_response;
     fluffy_response.b.block = t_serializable_object_to_blob(b);
+    {
+      blobdata other; // SM64COIN v0.4: a proof encoding this peer decodes
+      if (sm64_blob_for_peer(fluffy_response.b.block, context.m_sm64_codecs, other))
+        fluffy_response.b.block = std::move(other);
+    }
     fluffy_response.current_blockchain_height = arg.current_blockchain_height;
     std::vector<bool> seen(b.tx_hashes.size(), false);
     for(auto& tx_idx: arg.missing_tx_indices)
@@ -1015,6 +1021,12 @@ namespace cryptonote
       LOG_ERROR_CCONTEXT("failed to handle request NOTIFY_REQUEST_GET_OBJECTS, dropping connection");
       drop_connection(context, false, false);
       return LEVIN_ERROR_CONNECTION;
+    }
+    for (block_complete_entry &be : rsp.blocks) // SM64COIN v0.4: each proof in an encoding this peer decodes (same block ids)
+    {
+      blobdata other;
+      if (sm64_blob_for_peer(be.block, context.m_sm64_codecs, other))
+        be.block = std::move(other);
     }
     context.m_last_request_time = boost::posix_time::microsec_clock::universal_time();
     MLOG_P2P_MESSAGE("-->>NOTIFY_RESPONSE_GET_OBJECTS: blocks.size()="
@@ -1711,6 +1723,27 @@ skip:
         it = alive.count(*it) ? std::next(it) : m_sm64_evidence_sent.erase(it);
       for (const auto &c : fresh)
         m_sm64_evidence_sent.insert(c.second);
+    }
+    {
+      // SM64COIN v0.4: our codec advert to any connection that didn't get it yet (on_callback sends it first when we sync from the peer).
+      std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>> unsent;
+      m_p2p->for_each_connection([&](cryptonote_connection_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)
+      {
+        if (context.m_state >= cryptonote_connection_context::state_synchronizing && !context.m_sm64_codecs_sent)
+        {
+          context.m_sm64_codecs_sent = true;
+          unsent.push_back({context.m_remote_address.get_zone(), context.m_connection_id});
+        }
+        return true;
+      });
+      if (!unsent.empty())
+      {
+        NOTIFY_SM64_CODECS::request arg;
+        arg.codecs = sm64coin::codecs_advert();
+        epee::levin::message_writer blob{256};
+        epee::serialization::store_t_to_binary(arg, blob.buffer);
+        m_p2p->relay_notify_to_list(NOTIFY_SM64_CODECS::ID, std::move(blob), std::move(unsent));
+      }
     }
     if (fresh.empty())
       return;
@@ -2775,14 +2808,22 @@ skip:
   bool t_cryptonote_protocol_handler<t_core>::relay_block(NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_connection_context& exclude_context)
   {
     // sort peers between fluffy ones and others
+    // SM64COIN v0.4: and by the proof codecs they decode (codecs.rs): a peer that doesn't decode this
+    // proof's codec gets the same block (same id) with its proof transcoded, once per codec set.
+    block sm64_b;
+    const bool sm64_parsed = parse_and_validate_block_from_blob(arg.b.block, sm64_b);
+    std::map<std::string, std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>>> transcoded;
     std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>> fluffyConnections;
-    m_p2p->for_each_connection([this, &exclude_context, &fluffyConnections](connection_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)
+    m_p2p->for_each_connection([this, &exclude_context, &fluffyConnections, &transcoded, &sm64_b, sm64_parsed](connection_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)
     {
       // peer_id also filters out connections before handshake
       if (peer_id && exclude_context.m_connection_id != context.m_connection_id && context.m_remote_address.get_zone() == epee::net_utils::zone::public_)
       {
         LOG_DEBUG_CC(context, "RELAYING FLUFFY BLOCK TO PEER");
-        fluffyConnections.push_back({context.m_remote_address.get_zone(), context.m_connection_id});
+        if (sm64_parsed && sm64coin::codecs_need(sm64_b.sm64_proof, context.m_sm64_codecs) != 0)
+          transcoded[context.m_sm64_codecs].push_back({context.m_remote_address.get_zone(), context.m_connection_id});
+        else
+          fluffyConnections.push_back({context.m_remote_address.get_zone(), context.m_connection_id});
       }
       return true;
     });
@@ -2794,8 +2835,74 @@ skip:
       epee::serialization::store_t_to_binary(arg, fluffyBlob.buffer);
       m_p2p->relay_notify_to_list(NOTIFY_NEW_FLUFFY_BLOCK::ID, std::move(fluffyBlob), std::move(fluffyConnections));
     }
+    for (auto &t : transcoded) // SM64COIN v0.4
+    {
+      NOTIFY_NEW_FLUFFY_BLOCK::request other = arg;
+      if (!sm64_blob_for_peer(arg.b.block, t.first, other.b.block))
+      {
+        MWARNING("Proof-of-play: could not transcode block " << get_block_hash(sm64_b) << " for " << t.second.size() << " peer(s); not relayed to them");
+        continue;
+      }
+      MDEBUG("Proof-of-play: block " << get_block_hash(sm64_b) << " relayed transcoded (codec " << sm64coin::proof_codec(sm64_b.sm64_proof) << " -> " << t.second.size() << " peer(s))");
+      epee::levin::message_writer blob{32 * 1024};
+      epee::serialization::store_t_to_binary(other, blob.buffer);
+      m_p2p->relay_notify_to_list(NOTIFY_NEW_FLUFFY_BLOCK::ID, std::move(blob), std::move(t.second));
+    }
 
     return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------
+  template<class t_core>
+  bool t_cryptonote_protocol_handler<t_core>::sm64_blob_for_peer(const blobdata& block_blob, const std::string& mask, blobdata& out)
+  {
+    // SM64COIN v0.4: the policy is pow/sm64pow's (codecs.rs); a state-coded proof's inputs come from a replay of the block.
+    block b;
+    if (!parse_and_validate_block_from_blob(block_blob, b))
+      return false;
+    const int need = sm64coin::codecs_need(b.sm64_proof, mask);
+    if (need == 0)
+      return false;
+    std::string inputs, proof, why;
+    if (need == 2 && !m_core.get_blockchain_storage().sm64_played(b, inputs, true))
+    {
+      MERROR("Proof-of-play: no inputs to transcode block " << get_block_hash(b));
+      return false;
+    }
+    if (!sm64coin::transcode(b.sm64_proof, need == 2 ? &inputs : nullptr, mask, proof, why) || proof.empty())
+    {
+      MERROR("Proof-of-play: transcoding block " << get_block_hash(b) << " failed: " << why);
+      return false;
+    }
+    const crypto::hash id = get_block_hash(b);
+    b.sm64_proof = std::move(proof);
+    b.invalidate_hashes();
+    if (get_block_hash(b) != id)
+    {
+      MERROR("Proof-of-play: transcoding block " << id << " changed its id");
+      return false;
+    }
+    out = t_serializable_object_to_blob(b);
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------
+  template<class t_core>
+  void t_cryptonote_protocol_handler<t_core>::sm64_send_codecs(cryptonote_connection_context& context)
+  {
+    if (context.m_sm64_codecs_sent)
+      return;
+    context.m_sm64_codecs_sent = true;
+    NOTIFY_SM64_CODECS::request arg;
+    arg.codecs = sm64coin::codecs_advert();
+    post_notify<NOTIFY_SM64_CODECS>(arg, context);
+  }
+  //------------------------------------------------------------------------------------------------------------------------
+  template<class t_core>
+  int t_cryptonote_protocol_handler<t_core>::handle_notify_sm64_codecs(int command, NOTIFY_SM64_CODECS::request& arg, cryptonote_connection_context& context)
+  {
+    // SM64COIN v0.4: the codecs this peer decodes (pow/sm64pow/src/codecs.rs keeps the ones it lists at our version, plus the baseline).
+    context.m_sm64_codecs = sm64coin::codecs_mask(arg.codecs);
+    MINFO(context << "Proof-of-play: peer decodes codecs " << epee::string_tools::buff_to_hex_nodelimer(arg.codecs) << " (id, version pairs)");
+    return 1;
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>

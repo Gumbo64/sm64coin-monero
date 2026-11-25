@@ -346,6 +346,42 @@ namespace sm64coin
   bool decode_raw(const std::string &proof, std::string &raw) { return size_then_fill(sm64pow_decode_raw, proof, raw); }
   bool reencode(const std::string &proof, std::string &out) { return size_then_fill(sm64pow_reencode, proof, out); }
 
+  // SM64COIN v0.4: codec negotiation (pow/sm64pow/src/codecs.rs).
+  std::string codecs_advert()
+  {
+    std::string out(sm64pow_codecs_advert(nullptr, 0), '\0');
+    if (!out.empty())
+      sm64pow_codecs_advert(reinterpret_cast<uint8_t *>(&out[0]), out.size());
+    return out;
+  }
+  std::string codecs_mask(const std::string &advert)
+  {
+    std::string m(32, '\0');
+    sm64pow_codecs_mask(u8(advert), advert.size(), reinterpret_cast<uint8_t *>(&m[0]));
+    return m;
+  }
+  static const uint8_t *mask_ptr(const std::string &mask) { return mask.size() == 32 ? u8(mask) : nullptr; }
+  int codecs_need(const std::string &proof, const std::string &mask) { return sm64pow_codecs_need(u8(proof), proof.size(), mask_ptr(mask)); }
+  bool transcode(const std::string &proof, const std::string *inputs, const std::string &mask, std::string &out, std::string &why)
+  {
+    const uint8_t *in = inputs ? u8(*inputs) : nullptr;
+    const size_t in_len = inputs ? inputs->size() : 0;
+    const size_t n = sm64pow_transcode(u8(proof), proof.size(), in, in_len, mask_ptr(mask), nullptr, 0);
+    if (n == SIZE_MAX)
+    {
+      why = last_error();
+      return false;
+    }
+    out.assign(n, '\0');
+    if (n && sm64pow_transcode(u8(proof), proof.size(), in, in_len, mask_ptr(mask), reinterpret_cast<uint8_t *>(&out[0]), n) != n)
+    {
+      why = "transcode size changed";
+      return false;
+    }
+    return true;
+  }
+  int proof_codec(const std::string &proof) { return sm64pow_proof_codec(u8(proof), proof.size()); }
+
   source_scope::source_scope(const std::string &host, source_kind kind, uint64_t top)
     : m_handle(sm64pow_source_enter(host.c_str(), (int32_t)kind, top))
   {

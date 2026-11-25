@@ -438,4 +438,22 @@ namespace cryptonote
     typedef epee::misc_utils::struct_init<request_t> request;
   };
 
+  /************************************************************************/
+  /*                                                                      */
+  /************************************************************************/
+  struct NOTIFY_SM64_CODECS // SM64COIN v0.4: the proof codecs this node decodes (pow/sm64pow/src/codecs.rs)
+  {
+    const static int ID = BC_COMMANDS_POOL_BASE + 13;
+
+    struct request_t
+    {
+      std::string codecs; // (codec id u8, codec version u8) pairs; a peer that sent nothing gets the baseline (0, 1, 2)
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(codecs)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+  };
+
 }

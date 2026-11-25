@@ -69,6 +69,8 @@ namespace cryptonote
       return 1024 * 1024; // SM64COIN: a board share is chunked to <= 20000 heights (~160 KB)
     case cryptonote::NOTIFY_SM64_EVIDENCE::ID:
       return 64 * 1024; // SM64COIN v0.3: 272 bytes + a template (equivocation.rs MAX_WIRE ~ 37 KB)
+    case cryptonote::NOTIFY_SM64_CODECS::ID:
+      return 4 * 1024; // SM64COIN v0.4: at most 256 (id, version) pairs
     default:
       break;
     };

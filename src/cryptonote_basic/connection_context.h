@@ -118,6 +118,8 @@ namespace cryptonote
     size_t m_num_requested;
     copyable_atomic m_new_stripe_notification{0};
     copyable_atomic m_idle_peer_notification{0};
+    std::string m_sm64_codecs; // SM64COIN v0.4: the peer's codec set (32 bytes, codecs.rs); empty: the baseline (0, 1, 2)
+    bool m_sm64_codecs_sent = false; // SM64COIN v0.4: our NOTIFY_SM64_CODECS went out on this connection
   };
 
   inline std::string get_protocol_state_string(cryptonote_connection_context::state s)
