@@ -1127,10 +1127,12 @@ namespace cryptonote
     struct response_t: public rpc_response_base
     {
       std::vector<row> entries;
+      bool disabled; // the board is turned off on this node (SM64COIN)
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(entries)
+        KV_SERIALIZE_OPT(disabled, false)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;
@@ -1145,6 +1147,7 @@ namespace cryptonote
       std::string view_key;
       uint64_t timestamp;
       std::string signature; // SigV2 with the spend key over "sm64coin-board:<timestamp>:<name>"
+      std::vector<uint64_t> heights; // ascending heights of the blocks the address mined (its coinbase transfers); the node verifies each
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_request_base)
@@ -1153,6 +1156,7 @@ namespace cryptonote
         KV_SERIALIZE(view_key)
         KV_SERIALIZE(timestamp)
         KV_SERIALIZE(signature)
+        KV_SERIALIZE_OPT(heights, std::vector<uint64_t>())
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
@@ -1160,12 +1164,40 @@ namespace cryptonote
     struct response_t: public rpc_response_base
     {
       bool joined; // on the board now (new, or renamed)
+      bool queued; // accepted: its heights are being verified, it joins in a moment (poll sm64_board)
+      bool disabled; // the board is turned off on this node
       std::string reason; // why not
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(joined)
+        KV_SERIALIZE_OPT(queued, false)
+        KV_SERIALIZE_OPT(disabled, false)
         KV_SERIALIZE(reason)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
+  // SM64COIN: operator switch for the leaderboard (not on the restricted RPC).
+  struct COMMAND_RPC_SM64_BOARD_SET
+  {
+    struct request_t: public rpc_request_base
+    {
+      bool enabled;
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_request_base)
+        KV_SERIALIZE(enabled)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t: public rpc_response_base
+    {
+      bool enabled;
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_response_base)
+        KV_SERIALIZE(enabled)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;

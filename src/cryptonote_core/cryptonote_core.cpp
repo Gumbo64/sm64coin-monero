@@ -37,6 +37,7 @@ using namespace epee;
 #include <unordered_set>
 #include "cryptonote_core.h"
 #include "sm64coin/sm64coin.h" // SM64COIN
+#include <boost/uuid/uuid_io.hpp> // SM64COIN
 #include "common/util.h"
 #include "common/updates.h"
 #include "common/download.h"
@@ -133,6 +134,11 @@ namespace cryptonote
   const command_line::arg_descriptor<bool> arg_sm64_solo = {
     "sm64-solo"
   , "Count as synchronized without peers, so a lone node can mine (to bootstrap a new network). Peers are still used."
+  , false
+  };
+  const command_line::arg_descriptor<bool> arg_sm64_no_leaderboard = {
+    "sm64-no-leaderboard"
+  , "Turn the mining leaderboard off: no board messages are handled, relayed or shared, no entries are kept (default: on). Also: RPC sm64_board_set."
   , false
   };
   const command_line::arg_descriptor<bool> arg_offline = {
@@ -357,6 +363,7 @@ namespace cryptonote
     command_line::add_arg(desc, arg_test_dbg_lock_sleep);
     command_line::add_arg(desc, arg_offline);
     command_line::add_arg(desc, arg_sm64_solo); // SM64COIN
+    command_line::add_arg(desc, arg_sm64_no_leaderboard); // SM64COIN
     command_line::add_arg(desc, arg_sm64_replay_threads); // SM64COIN
     command_line::add_arg(desc, arg_sm64_max_reorg); // SM64COIN v0.3
     command_line::add_arg(desc, arg_disable_dns_checkpoints);
@@ -726,6 +733,8 @@ namespace cryptonote
     }
     r = m_blockchain_storage.init(db.release(), m_nettype, m_offline, regtest ? &regtest_test_options : test_options, fixed_difficulty, get_checkpoints);
     m_sm64_board.init(m_config_folder + "/sm64_board.json", m_nettype); // SM64COIN
+    m_sm64_board.set_enabled(!command_line::get_arg(vm, arg_sm64_no_leaderboard));
+    m_blockchain_storage.add_block_notify([this](uint64_t height, epee::span<const block>) { m_sm64_board.block_added(height); }); // SM64COIN: wakes the board
     sm64coin::evidence_persist(m_config_folder + "/sm64_evidence.bin"); // SM64COIN v0.3: recent equivocation evidence across restarts
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize blockchain storage");
     {
@@ -824,6 +833,7 @@ namespace cryptonote
     bool core::deinit()
   {
     m_sm64_stop = true; // SM64COIN
+    m_sm64_board.flush();
     if (m_sm64_releaser.joinable())
       m_sm64_releaser.join();
     m_miner.stop();
@@ -1692,21 +1702,33 @@ namespace cryptonote
       get_protocol()->relay_sm64_evidence(ev, boost::uuids::nil_uuid());
   }
   //-----------------------------------------------------------------------------------------------
-  std::vector<sm64_board_entry> core::sm64_board_offer(const std::vector<sm64_board_entry> &entries, const boost::uuids::uuid &source, std::string *why)
+  sm64_board_result core::sm64_board_offer(const std::vector<sm64_board_entry> &entries, const boost::uuids::uuid &source)
   {
-    std::vector<sm64_board_entry> changed = m_sm64_board.offer(entries, m_blockchain_storage, why);
-    if (!changed.empty())
+    const std::string src = source.is_nil() ? "rpc" : "p:" + boost::uuids::to_string(source);
+    sm64_board_result r = m_sm64_board.offer(entries, m_blockchain_storage, src);
+    if (!r.changed.empty())
     {
       NOTIFY_SM64_BOARD::request arg{};
-      arg.entries = changed;
+      arg.entries = r.changed;
       m_pprotocol->relay_sm64_board(arg, source);
     }
-    return changed;
+    return r;
   }
   //-----------------------------------------------------------------------------------------------
   void core::sm64_board_tick()
   {
-    m_sm64_board_scan.do_call([this]() { m_sm64_board.update(m_blockchain_storage); return true; });
+    if (!m_sm64_board.enabled())
+      return;
+    m_sm64_board_scan.do_call([this]() {
+      const std::vector<sm64_board_entry> joined = m_sm64_board.update(m_blockchain_storage);
+      if (!joined.empty())
+      {
+        NOTIFY_SM64_BOARD::request arg{};
+        arg.entries = joined;
+        m_pprotocol->relay_sm64_board(arg, boost::uuids::nil_uuid());
+      }
+      return true;
+    });
     m_sm64_board_share.do_call([this]() {
       NOTIFY_SM64_BOARD::request arg{};
       arg.entries = m_sm64_board.entries();

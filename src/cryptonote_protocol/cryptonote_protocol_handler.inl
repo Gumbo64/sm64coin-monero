@@ -2689,17 +2689,24 @@ skip:
   int t_cryptonote_protocol_handler<t_core>::handle_notify_sm64_board(int command, NOTIFY_SM64_BOARD::request& arg, cryptonote_connection_context& context)
   {
     // SM64COIN: a peer's leaderboard entries. At most a board's worth; the
-    // core admits only verified entries that make its own top 50 and relays
-    // those, so nothing else spreads.
+    // core rate limits per peer, verifies, and relays only what changes its board.
+    if (!m_core.sm64_board_enabled())
+      return 1; // turned off: ignored
     if (arg.entries.size() > 2 * sm64_board::TOP_N)
     {
-      LOG_DEBUG_CC(context, "SM64 board: " << arg.entries.size() << " entries, dropped");
+      LOG_PRINT_CCONTEXT_L1("SM64 board: " << arg.entries.size() << " entries, dropping the connection");
+      drop_connection(context, true, false);
       return 1;
     }
-    std::string why;
-    const auto changed = m_core.sm64_board_offer(arg.entries, context.m_connection_id, &why);
-    if (!changed.empty())
-      MLOG_P2P_MESSAGE("SM64 board: " << changed.size() << " new entries from " << context.m_remote_address.str());
+    const auto r = m_core.sm64_board_offer(arg.entries, context.m_connection_id);
+    if (r.abuse)
+    {
+      LOG_PRINT_CCONTEXT_L1("SM64 board: invalid entries or flooding, dropping the connection");
+      drop_connection(context, true, false);
+      return 1;
+    }
+    if (!r.changed.empty())
+      MLOG_P2P_MESSAGE("SM64 board: " << r.changed.size() << " renamed entries from " << context.m_remote_address.str());
     return 1;
   }
   //------------------------------------------------------------------------------------------------------------------------

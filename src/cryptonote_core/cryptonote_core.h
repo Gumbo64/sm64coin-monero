@@ -73,6 +73,7 @@ namespace cryptonote
   extern const command_line::arg_descriptor<difficulty_type> arg_fixed_difficulty;
   extern const command_line::arg_descriptor<bool> arg_offline;
   extern const command_line::arg_descriptor<bool> arg_sm64_solo; // SM64COIN
+  extern const command_line::arg_descriptor<bool> arg_sm64_no_leaderboard; // SM64COIN
   extern const command_line::arg_descriptor<size_t> arg_block_download_max_size;
   extern const command_line::arg_descriptor<bool> arg_sync_pruned_blocks;
 
@@ -119,7 +120,9 @@ namespace cryptonote
      void sm64_relay_evidence_for(const block &b); // SM64COIN v0.3: send the evidence about b's template along with it
      // SM64COIN: the shared mining leaderboard (sm64_board.h). Offer admits
      // and relays what changes the board.
-     std::vector<sm64_board_entry> sm64_board_offer(const std::vector<sm64_board_entry> &entries, const boost::uuids::uuid &source, std::string *why = nullptr);
+     sm64_board_result sm64_board_offer(const std::vector<sm64_board_entry> &entries, const boost::uuids::uuid &source);
+     bool sm64_board_enabled() const { return m_sm64_board.enabled(); }
+     void sm64_board_set_enabled(bool on) { m_sm64_board.set_enabled(on); }
      std::vector<sm64_board_row> sm64_board_rows() const { return m_sm64_board.rows(); }
      std::vector<sm64_board_entry> sm64_board_entries() const { return m_sm64_board.entries(); }
      void sm64_board_tick();
@@ -1106,7 +1109,7 @@ namespace cryptonote
      sm64_board m_sm64_board; // SM64COIN
      std::thread m_sm64_releaser; // SM64COIN: adds and relays claims the replay queue verified
      std::atomic<bool> m_sm64_stop{false}; // SM64COIN
-     epee::math_helper::once_a_time_seconds<20, true> m_sm64_board_scan; // SM64COIN: count new blocks
+     epee::math_helper::once_a_time_seconds<2, true> m_sm64_board_scan; // SM64COIN: check new blocks / verify heights (idle unless woken)
      epee::math_helper::once_a_time_seconds<120, false> m_sm64_board_share; // SM64COIN: send the board to every peer
 
      std::atomic<bool> m_starter_message_showed; //!< has the "daemon will sync now" message been shown?

@@ -2957,6 +2957,7 @@ namespace cryptonote
   bool core_rpc_server::on_sm64_board(const COMMAND_RPC_SM64_BOARD::request& req, COMMAND_RPC_SM64_BOARD::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
     // SM64COIN: the leaderboard this node keeps (top 50 by blocks mined).
+    res.disabled = !m_core.sm64_board_enabled();
     for (const auto &r : m_core.sm64_board_rows())
     {
       COMMAND_RPC_SM64_BOARD::row x;
@@ -2976,24 +2977,37 @@ namespace cryptonote
   //------------------------------------------------------------------------------------------------------------------------------
   bool core_rpc_server::on_sm64_board_join(const COMMAND_RPC_SM64_BOARD_JOIN::request& req, COMMAND_RPC_SM64_BOARD_JOIN::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
   {
-    // SM64COIN: an entry for the leaderboard; verified, counted and, if it
-    // changes the board, relayed to every peer.
+    // SM64COIN: an entry for the leaderboard; verified and, if it changes the
+    // board, relayed to every peer. A new address is queued: its heights are
+    // verified in the background (poll sm64_board).
     sm64_board_entry e;
     e.name = req.name;
     e.address = req.address;
     e.view_key = req.view_key;
     e.timestamp = req.timestamp;
     e.signature = req.signature;
-    std::string why;
-    res.joined = !m_core.sm64_board_offer({e}, boost::uuids::nil_uuid(), &why).empty();
+    e.heights = req.heights;
+    sm64_board_result r = m_core.sm64_board_offer({e}, boost::uuids::nil_uuid());
+    res.joined = !r.changed.empty();
+    res.queued = r.queued;
+    res.disabled = r.disabled;
     if (!res.joined)
     {
       bool on = false;
-      for (const auto &r : m_core.sm64_board_rows())
-        on = on || (r.entry.address == e.address && r.entry.name == e.name && r.entry.timestamp == e.timestamp);
+      for (const auto &x : m_core.sm64_board_rows())
+        on = on || (x.entry.address == e.address && x.entry.name == e.name);
       res.joined = on;
-      res.reason = on ? "already on the board" : (why.empty() ? "an entry with a later timestamp is on the board" : why);
+      res.reason = on ? "already on the board" : r.queued ? "queued: its blocks are being verified, it joins within a minute" : (r.why.empty() ? "an entry with a later timestamp is on the board" : r.why);
     }
+    res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::on_sm64_board_set(const COMMAND_RPC_SM64_BOARD_SET::request& req, COMMAND_RPC_SM64_BOARD_SET::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    // SM64COIN: the operator's switch (unrestricted RPC only).
+    m_core.sm64_board_set_enabled(req.enabled);
+    res.enabled = m_core.sm64_board_enabled();
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }

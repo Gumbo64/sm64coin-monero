@@ -388,6 +388,9 @@ namespace cryptonote
     std::string view_key;
     uint64_t timestamp = 0;
     std::string signature;
+    // SM64COIN: the evidence: heights of blocks whose coinbase pays the address
+    // (ascending, at most 20000). Each is verified with one key derivation.
+    std::vector<uint64_t> heights;
 
     BEGIN_KV_SERIALIZE_MAP()
       KV_SERIALIZE(name)
@@ -395,6 +398,7 @@ namespace cryptonote
       KV_SERIALIZE(address)
       KV_SERIALIZE(view_key)
       KV_SERIALIZE(signature)
+      KV_SERIALIZE_OPT(heights, std::vector<uint64_t>())
     END_KV_SERIALIZE_MAP()
   };
 
