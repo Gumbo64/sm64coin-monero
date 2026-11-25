@@ -1170,6 +1170,9 @@ bool Blockchain::switch_to_alternative_blockchain(std::list<block_extended_info>
   if(!discard_disconnected_chain)
   {
     //pushing old chain as alternative chain
+    // SM64COIN: only stored (valid ex-main blocks): no relay policy, no nested reorganisation (the
+    // pof window or the equivocation penalty must not flip back while the switch is half done).
+    m_sm64_readding = true;
     for (auto& old_ch_ent : disconnected_chain)
     {
       block_verification_context bvc = {};
@@ -1182,6 +1185,7 @@ bool Blockchain::switch_to_alternative_blockchain(std::list<block_extended_info>
         // think this is bad enough to warrant that.
       }
     }
+    m_sm64_readding = false; // SM64COIN
   }
 
   //removing alt_chain entries from alternative chains container
@@ -1935,7 +1939,7 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
       bvc.m_verifivation_failed = true;
       return false;
     }
-    if (sm64_skip_alt(b, id, bei.height)) return false; // SM64COIN: replay only alternative blocks that can matter (admit.rs)
+    if (!m_sm64_readding && sm64_skip_alt(b, id, bei.height)) return false; // SM64COIN: replay only alternative blocks that can matter (admit.rs); ex-main blocks being re-added are kept
 
     bool is_a_checkpoint;
     if(!m_checkpoints.check_block(bei.height, id, is_a_checkpoint))
@@ -2109,7 +2113,7 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
 
       return r;
     }
-    else if(sm64coin::weigh_by_blocks() ? (sm64_fork_choice(alt_chain) || sm64_displaces(alt_chain)) : main_chain_cumulative_difficulty < bei.cumulative_difficulty) // SM64COIN: longer chain (rules; v0.3: with the equivocation penalty, equivocation.rs), else difficulty bigger than in main chain; v0.3: or publish-on-find's window (pof.rs)
+    else if(!m_sm64_readding && (sm64coin::weigh_by_blocks() ? (sm64_fork_choice(alt_chain) || sm64_displaces(alt_chain)) : main_chain_cumulative_difficulty < bei.cumulative_difficulty) && sm64_reorg_allowed(alt_chain)) // SM64COIN: longer chain (rules; v0.3: with the equivocation penalty, equivocation.rs), else difficulty bigger than in main chain; v0.3: or publish-on-find's window (pof.rs)
     {
       //do reorganize!
       MGINFO_GREEN("###### REORGANIZE on height: " << alt_chain.front().height << " of " << m_db->height() - 1 << " with cum_difficulty " << m_db->get_block_cumulative_difficulty(m_db->height() - 1) << std::endl << " alternative blockchain size: " << alt_chain.size() << " with cum_difficulty " << bei.cumulative_difficulty);
@@ -4696,7 +4700,7 @@ bool Blockchain::add_new_block(const block& bl, block_verification_context& bvc,
   CRITICAL_REGION_LOCAL1(m_blockchain_lock);
   db_rtxn_guard rtxn_guard(m_db);
   // SM64COIN v0.3: equivocation evidence formed while handling this block carries its template (relayable).
-  sm64coin::block_scope sm64_scope(block_to_blob(bl), m_db->height() ? m_db->height() - 1 : 0);
+  sm64coin::block_scope sm64_scope(block_to_blob(bl), sm64_seed(bl), bl.miner_tx.vin.size() == 1 && bl.miner_tx.vin[0].type() == typeid(txin_gen) ? boost::get<txin_gen>(bl.miner_tx.vin[0]).height : 0, m_db->height() ? m_db->height() - 1 : 0);
   int where = 0;
   if(have_block(id, &where))
   {
@@ -6017,7 +6021,7 @@ bool Blockchain::sm64_check_proof(const block& b, const difficulty_type& difficu
     return false;
   }
   if (eligible)
-    sm64coin::note_eligible(id, b.prev_id, seed, (uint32_t)frames, b.timestamp); // SM64COIN v0.3: publish-on-find's window (pof.rs)
+    sm64coin::note_eligible(id, b.prev_id, seed, (uint32_t)frames, b.timestamp, b.sm64_sig); // SM64COIN v0.3: publish-on-find's window (pof.rs)
   MINFO("Proof-of-play accepted: " << frames << " frames, seed " << seed << ", difficulty " << difficulty);
   return true;
 }
@@ -6125,7 +6129,7 @@ bool Blockchain::sm64_job(const block& b, const crypto::hash& id, sm64coin::queu
   }
   j.id = id; j.parent = b.prev_id; j.seed = sm64_seed(b); j.genesis_parent = genesis_parent; j.gap = gap;
   j.stamp = b.timestamp; j.difficulty = d > std::numeric_limits<uint64_t>::max() ? std::numeric_limits<uint64_t>::max() : static_cast<uint64_t>(d);
-  j.proof = &b.sm64_proof; j.frames = sm64coin::proof_frames(b.sm64_proof); j.due = 0;
+  j.proof = &b.sm64_proof; j.frames = sm64coin::proof_frames(b.sm64_proof); j.due = 0; j.sig = &b.sm64_sig;
   return j.frames > 0;
 }
 //------------------------------------------------------------------
@@ -6162,7 +6166,7 @@ bool Blockchain::sm64_hold(const block& b, const crypto::hash& id, const pool_su
     if (claim == 3 && unasked)
     {
       MWARNING("Proof-of-play: block " << id << " is a second run for a template we already have a run for (one run per key): equivocation evidence kept; not replayed");
-      s_sm64_refusal = "a different run was already submitted for this template (one run per key): not accepted";
+      sm64_refuse(id, "a different run was already submitted for this template (one run per key): not accepted");
       return true;
     }
   }
@@ -6175,8 +6179,8 @@ bool Blockchain::sm64_hold(const block& b, const crypto::hash& id, const pool_su
   if (src == sm64coin::source_rpc_submit && due > now + sm64coin::rpc_submit_ahead())
   {
     // Restricted RPC: no client may park claims in the queue (a gateway's clients share one address).
-    s_sm64_refusal = "submitted too early: the run is due in " + std::to_string(due - now) + " s; submit at most " + std::to_string(sm64coin::rpc_submit_ahead()) + " s before it is valid";
-    MINFO("Proof-of-play: block " << id << ": " << s_sm64_refusal);
+    sm64_refuse(id, "submitted too early: the run is due in " + std::to_string(due - now) + " s; submit at most " + std::to_string(sm64coin::rpc_submit_ahead()) + " s before it is valid");
+    MINFO("Proof-of-play: block " << id << ": submitted too early (restricted RPC)");
     return true;
   }
   if (!unasked && due == 0)
@@ -6214,10 +6218,21 @@ bool Blockchain::sm64_due(const block& b, const difficulty_type& d, uint64_t& du
 }
 //------------------------------------------------------------------
 thread_local std::string Blockchain::s_sm64_refusal;
-std::string Blockchain::sm64_take_refusal()
+thread_local crypto::hash Blockchain::s_sm64_refusal_id = crypto::null_hash;
+void Blockchain::sm64_refuse(const crypto::hash& id, const std::string& why)
 {
+  s_sm64_refusal_id = id;
+  s_sm64_refusal = why;
+}
+std::string Blockchain::sm64_take_refusal(const crypto::hash& id)
+{
+  // Only the reason for `id` itself: a reorganisation it triggers re-adds other blocks, whose
+  // refusals must not turn this block's answer into an error.
   std::string r;
-  r.swap(s_sm64_refusal);
+  if (s_sm64_refusal_id == id)
+    r.swap(s_sm64_refusal);
+  s_sm64_refusal.clear();
+  s_sm64_refusal_id = crypto::null_hash;
   return r;
 }
 //------------------------------------------------------------------
@@ -6232,7 +6247,10 @@ bool Blockchain::sm64_enqueue(const block& b, const crypto::hash& id, const pool
   {
     CRITICAL_REGION_LOCAL(m_sm64_held_lock);
     if (m_sm64_held.count(id))
+    {
+      sm64coin::queue_also(id); // another source sent the same claim: its fallback (queue.rs)
       return true;
+    }
     m_sm64_held[id] = sm64_held_block{b, extra, due, j.seed};
   }
   std::string why;
@@ -6244,8 +6262,10 @@ bool Blockchain::sm64_enqueue(const block& b, const crypto::hash& id, const pool
     if (r >= 2)
     {
       MINFO("Proof-of-play: dropping block " << id << ": " << why);
-      s_sm64_refusal = "not queued: " + why;
+      sm64_refuse(id, "not queued: " + why);
     }
+    else
+      sm64_refuse(id, "already seen and decided by this node's replay queue (not queued again)");
     return true;
   }
   MINFO("Proof-of-play: queued block " << id << " (" << frames << " frames), replay in " << (due > (uint64_t)time(NULL) ? due - time(NULL) : 0) << " s");
@@ -6275,11 +6295,12 @@ bool Blockchain::sm64_hold_alt(const block& b, const crypto::hash& id, const poo
   if (claim == 3)
   {
     MWARNING("Proof-of-play: block " << id << " is a second run for a template we already have a run for (one run per key): equivocation evidence kept; not replayed");
+    sm64_refuse(id, "a different run was already submitted for this template (one run per key): not accepted");
     return true;
   }
   if (claim == 2 && !sm64coin::restamp_preferred(m_db->top_block_hash(), seed, b.timestamp, id))
   {
-    s_sm64_refusal = "a copy of the tip's run that is not the preferred copy (a later stamp, or outside the displacement window)";
+    sm64_refuse(id, "a copy of the tip's run that is not the preferred copy (a later stamp, or outside the displacement window)");
     return true; // the same run again (a copy, a restamp) that is not the preferred copy of our tip (pof.rs)
   }
   // An unasked sibling of the tip is never replayed here under the lock. One that could displace the
@@ -6288,10 +6309,10 @@ bool Blockchain::sm64_hold_alt(const block& b, const crypto::hash& id, const poo
   // sibling is not stored: if a peer builds on it, its child arrives as an orphan and the pair comes
   // in a sync span (DOS.md). (It used to be admit.rs's per-parent quota, replayed here under the
   // lock: up to 2 x 36,000 frames per height.)
-  if (claim != 2 && !sm64coin::pof_candidate(m_db->top_block_hash(), id, frames, b.timestamp))
+  if (claim != 2 && !sm64coin::pof_candidate(m_db->top_block_hash(), id, seed, frames, b.timestamp, b.sm64_sig))
   {
     MINFO("Proof-of-play: not replaying block " << id << " (" << frames << " frames): a sibling of our tip that cannot displace it");
-    s_sm64_refusal = "a sibling of the current tip that cannot displace it (another block was eligible first, and this run is not shorter inside the displacement window)";
+    sm64_refuse(id, "a sibling of the current tip that cannot displace it (another block was eligible first, and this run is not shorter inside the displacement window)");
     return true;
   }
   // Its retarget difficulty (the tip's own parent) and the time it fits.
@@ -6313,7 +6334,7 @@ void Blockchain::sm64_prereplay(const block& b)
     return;
   const crypto::hash id = get_block_hash(b);
   std::string why;
-  sm64coin::block_scope sm64_scope(block_to_blob(b), get_current_blockchain_height() ? get_current_blockchain_height() - 1 : 0);
+  sm64coin::block_scope sm64_scope(block_to_blob(b), sm64_seed(b), get_current_blockchain_height(), get_current_blockchain_height() ? get_current_blockchain_height() - 1 : 0);
   const int claim = sm64coin::note_claim(sm64_seed(b), b.sm64_proof, sm64_miner_nonce(b), b.sm64_sig, why);
   if (claim != 1 && claim != 2)
     return; // a bad signature, or a second run of a template (one run per key): not worth a replay
@@ -6344,6 +6365,26 @@ bool Blockchain::sm64_take_held(const crypto::hash& id, block& b, pool_supplemen
   extra = std::move(it->second.extra);
   m_sm64_held.erase(it);
   return true;
+}
+//------------------------------------------------------------------
+bool Blockchain::sm64_reorg_allowed(const std::list<block_extended_info>& alt_chain) const
+{
+  // SM64COIN v0.3: the reorganisation cap (pow/sm64pow/src/reorg.rs; --sm64-max-reorg, RPC sm64_allow_reorg).
+  if (alt_chain.empty())
+    return true;
+  const uint64_t top = m_db->height() - 1, fork = alt_chain.front().height;
+  const uint64_t depth = top >= fork ? top - fork + 1 : 0;
+  std::vector<crypto::hash> ids;
+  for (const auto &a : alt_chain)
+    ids.push_back(get_block_hash(a.bl));
+  if (sm64coin::reorg_allowed(depth, ids))
+    return true;
+  MCLOG_RED(el::Level::Error, "global", "**********************************************************************");
+  MCLOG_RED(el::Level::Error, "global", "Proof-of-play: REFUSING a reorganisation " << depth << " blocks deep (more than --sm64-max-reorg) onto the chain ending in "
+            << get_block_hash(alt_chain.back().bl) << " at height " << alt_chain.back().height << ". If that chain is the right one (e.g. after a long partition), "
+            << "allow it with the RPC sm64_allow_reorg {\"hash\": \"" << get_block_hash(alt_chain.back().bl) << "\"} (it switches when that chain's next block arrives), or restart with --sm64-max-reorg 0.");
+  MCLOG_RED(el::Level::Error, "global", "**********************************************************************");
+  return false;
 }
 //------------------------------------------------------------------
 bool Blockchain::sm64_fork_choice(const std::list<block_extended_info>& alt_chain) const
@@ -6384,9 +6425,9 @@ void Blockchain::sm64_note_history()
     if (!get_block_by_hash(m_db->get_block_hash_from_height(h), b))
       continue;
     std::string why;
-    sm64coin::block_scope scope(block_to_blob(b), n - 1);
+    sm64coin::block_scope scope(block_to_blob(b), sm64_seed(b), h, n - 1);
     sm64coin::note_claim(sm64_seed(b), b.sm64_proof, sm64_miner_nonce(b), b.sm64_sig, why);
-    sm64coin::note_history(get_block_hash(b), b.prev_id, sm64_seed(b), sm64coin::proof_frames(b.sm64_proof), b.timestamp);
+    sm64coin::note_history(get_block_hash(b), b.prev_id, sm64_seed(b), sm64coin::proof_frames(b.sm64_proof), b.timestamp, b.sm64_sig);
   }
 }
 //------------------------------------------------------------------
@@ -6433,7 +6474,7 @@ bool Blockchain::sm64_skip_alt(const block& b, const crypto::hash& id, uint64_t 
       const sm64coin::sibling j = sm64coin::judge_sibling(seed, sm64_miner_nonce(b), m.sm64_proof, m.sm64_sig, b.sm64_proof, b.sm64_sig, evidence);
       if (j == sm64coin::sibling_bad_sig)
       {
-        s_sm64_refusal = "the proof's signature does not verify with the coinbase's miner key";
+        sm64_refuse(id, "the proof's signature does not verify with the coinbase's miner key");
         return true; // invalid, and a variant of our block: not worth a replay (nor a peer penalty: it may be a relay of junk)
       }
       if (j == sm64coin::sibling_equivocation)
@@ -6448,12 +6489,12 @@ bool Blockchain::sm64_skip_alt(const block& b, const crypto::hash& id, uint64_t 
   }
   // SM64COIN v0.3 publish-on-find: a sibling of our tip that could displace it is worth a replay.
   if (height == top && have_main && main_seed != seed && top > 0 && b.prev_id == m_db->get_block_hash_from_height(top - 1) &&
-      sm64coin::pof_candidate(m_db->top_block_hash(), id, frames, b.timestamp))
+      sm64coin::pof_candidate(m_db->top_block_hash(), id, seed, frames, b.timestamp, b.sm64_sig))
     return false;
   if (sm64coin::admit_alt(id, b.prev_id, seed, frames, height, top, have_main ? &main_seed : nullptr, why))
     return false;
   MINFO("Proof-of-play: not replaying alternative block " << id << " at height " << height << ": " << why);
-  s_sm64_refusal = "not replayed: " + why;
+  sm64_refuse(id, "not replayed: " + why);
   return true;
 }
 //------------------------------------------------------------------

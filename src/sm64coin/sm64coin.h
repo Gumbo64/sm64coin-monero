@@ -67,12 +67,12 @@ namespace sm64coin
   void evidence_persist(const std::string &path);
   // Fork choice with the equivocation penalty (equivocation.rs): the two chains above the fork point. True: switch.
   bool fork_choice(uint64_t main_len, const std::vector<crypto::hash> &main_seeds, uint64_t alt_len, const std::vector<crypto::hash> &alt_seeds);
-  void note_history(const crypto::hash &id, const crypto::hash &parent, const crypto::hash &seed, uint32_t frames, uint64_t timestamp);
+  void note_history(const crypto::hash &id, const crypto::hash &parent, const crypto::hash &seed, uint32_t frames, uint64_t timestamp, const crypto::signature &sig);
   // While alive: the block this thread handles, so evidence formed about its template carries it (relayable).
   class block_scope
   {
   public:
-    block_scope(const std::string &blob, uint64_t top);
+    block_scope(const std::string &blob, const crypto::hash &seed, uint64_t height, uint64_t top);
     ~block_scope();
     block_scope(const block_scope &) = delete;
     block_scope &operator=(const block_scope &) = delete;
@@ -84,9 +84,16 @@ namespace sm64coin
   // Publish-on-find (pof.rs): `id` became eligible now; whether eligible
   // sibling `alt` replaces our childless `tip`; whether a sibling claiming
   // `frames` stamped `timestamp` could (worth a replay); the freshness bound.
-  void note_eligible(const crypto::hash &id, const crypto::hash &parent, const crypto::hash &seed, uint32_t frames, uint64_t timestamp);
+  void note_eligible(const crypto::hash &id, const crypto::hash &parent, const crypto::hash &seed, uint32_t frames, uint64_t timestamp, const crypto::signature &sig); // sig: the equal-length tie-break
   bool displaces(const crypto::hash &tip, const crypto::hash &alt);
-  bool pof_candidate(const crypto::hash &tip, const crypto::hash &id, uint32_t frames, uint64_t timestamp); // judged when `id` became eligible here
+  bool pof_candidate(const crypto::hash &tip, const crypto::hash &id, const crypto::hash &seed, uint32_t frames, uint64_t timestamp, const crypto::signature &sig); // judged when `id` became eligible here; also a clean sibling of an equivocated tip
+  // The reorganisation cap (reorg.rs): the operator's cap (0 unlimited), a one-time allowance, the check.
+  void set_max_reorg(uint64_t n);
+  void allow_reorg(const crypto::hash &id);
+  bool reorg_allowed(uint64_t depth, const std::vector<crypto::hash> &alt_ids);
+  // Restricted RPC's bulk answers (get_sm64_state / get_sm64_cycle), all clients together.
+  bool rpc_bulk_ok();
+  void rpc_bulk_charge(uint64_t bytes);
   bool stale(uint64_t timestamp);
   bool stale_block(const crypto::hash &id, uint64_t timestamp); // judged when `id` became eligible here (a queued claim: max(arrival, due))
   // A copy of our block `tip`'s run (same seed, another stamp) that is the preferred copy (pof.rs restamp_preferred).
@@ -102,7 +109,7 @@ namespace sm64coin
   // has a main-chain child (its id and frames out). Called from worker threads.
   typedef int (*queue_facts_cb)(const crypto::hash &parent, crypto::hash &child, uint32_t &child_frames);
   void queue_start(queue_facts_cb cb, unsigned threads);
-  struct queue_job { crypto::hash id, parent, seed; bool genesis_parent; uint64_t gap, stamp, due; uint64_t difficulty; const std::string *proof; uint32_t frames; };
+  struct queue_job { crypto::hash id, parent, seed; bool genesis_parent; uint64_t gap, stamp, due; uint64_t difficulty; const std::string *proof; uint32_t frames; const crypto::signature *sig = nullptr; };
   // 0 queued, 1 already known, 2 full, 3 this source sent an invalid claim recently (`why`). Source: this thread's source_scope.
   int queue_submit(const queue_job &j, std::string &why);
   // Replays now, on this thread (outside any lock). 1 valid, 0 invalid, 2 skipped, 3 not decided here.
@@ -111,6 +118,7 @@ namespace sm64coin
   int queue_wait(unsigned timeout_ms, crypto::hash &id, std::string &why);
   // Whether `id` was replayed valid and is waiting to be added (consumes it).
   bool queue_take_cleared(const crypto::hash &id);
+  void queue_also(const crypto::hash &id); // an already queued claim sent again by this thread's source (a fallback if the first is penalised)
   bool has_state(const crypto::hash &id);
   // Block `id`'s cached end state (the game's save state), gzip; false unless cached.
   bool end_state_gz(const crypto::hash &id, std::string &out);

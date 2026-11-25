@@ -47,7 +47,7 @@
 #define CURRENT_BLOCK_MINOR_VERSION                     0
 #define CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT              60*2 // SM64COIN: was 2 h; difficulty decays with timestamp age
 #define SM64COIN_MAX_PROOF_BYTES                        (256 * 1024) // SM64COIN: cap on block::sm64_proof (36000 raw frames = 144 kB)
-#define CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE             10
+#define CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE             3 // SM64COIN v0.3: was 10; 3 blocks = 1 h at 20-minute blocks
 
 #define BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW               60
 

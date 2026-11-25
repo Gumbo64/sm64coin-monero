@@ -374,8 +374,10 @@ namespace cryptonote
     bool sm64_due(const block& b, const difficulty_type& d, uint64_t& due) const;
     // Why the last block this thread handed to add_new_block was refused by the replay queue's
     // checks (one run per key, too early on restricted RPC, the queue or budget full); "" if not.
-    static std::string sm64_take_refusal();
+    static std::string sm64_take_refusal(const crypto::hash& id);
+    static void sm64_refuse(const crypto::hash& id, const std::string& why);
     static thread_local std::string s_sm64_refusal;
+    static thread_local crypto::hash s_sm64_refusal_id;
     // What the queue's workers ask: 0 parent not in our chain, 1 it is the tip, 2 it has a child (id, frames).
     int sm64_chain_facts(const crypto::hash& parent, crypto::hash& child, uint32_t& frames) const;
     void sm64_start_queue(unsigned threads);
@@ -389,6 +391,7 @@ namespace cryptonote
     bool sm64_skip_alt(const block& b, const crypto::hash& id, uint64_t height) const;
     bool sm64_displaces(const std::list<block_extended_info>& alt_chain) const; // SM64COIN v0.3
     bool sm64_fork_choice(const std::list<block_extended_info>& alt_chain) const; // SM64COIN v0.3: longer chain, with the equivocation penalty
+    bool sm64_reorg_allowed(const std::list<block_extended_info>& alt_chain) const; // SM64COIN v0.3: the reorganisation cap (reorg.rs)
     void sm64_note_history(); // SM64COIN v0.3: rebuild the claims and the window from the last blocks (at startup)
     // When block `id` is held, the unix time it is due (0: not held).
     uint64_t sm64_held_until(const crypto::hash& id) const;
@@ -1283,6 +1286,7 @@ namespace cryptonote
     difficulty_type m_fixed_difficulty;
     struct sm64_held_block { block b; pool_supplement extra; uint64_t due; crypto::hash seed; }; // SM64COIN
     std::map<crypto::hash, sm64_held_block> m_sm64_held; // SM64COIN: the hold policy
+    bool m_sm64_readding = false; // SM64COIN: re-adding the disconnected chain after a switch (store only)
     mutable epee::critical_section m_sm64_held_lock; // SM64COIN
 
     std::atomic<bool> m_cancel;

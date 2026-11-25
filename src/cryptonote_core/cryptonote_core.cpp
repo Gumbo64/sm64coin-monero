@@ -122,8 +122,13 @@ namespace cryptonote
   // SM64COIN
   const command_line::arg_descriptor<unsigned> arg_sm64_replay_threads = {
     "sm64-replay-threads"
-  , "Worker threads that replay queued block claims outside the blockchain lock (0: every core)"
+  , "Worker threads that replay queued block claims outside the blockchain lock (0: every core but one)"
   , 0
+  };
+  const command_line::arg_descriptor<uint64_t> arg_sm64_max_reorg = {
+    "sm64-max-reorg"
+  , "Refuse to reorganise more than this many blocks deep (0: unlimited). A refused deeper chain can be allowed once with the RPC sm64_allow_reorg"
+  , 36
   };
   const command_line::arg_descriptor<bool> arg_sm64_solo = {
     "sm64-solo"
@@ -353,6 +358,7 @@ namespace cryptonote
     command_line::add_arg(desc, arg_offline);
     command_line::add_arg(desc, arg_sm64_solo); // SM64COIN
     command_line::add_arg(desc, arg_sm64_replay_threads); // SM64COIN
+    command_line::add_arg(desc, arg_sm64_max_reorg); // SM64COIN v0.3
     command_line::add_arg(desc, arg_disable_dns_checkpoints);
     command_line::add_arg(desc, arg_block_download_max_size);
     command_line::add_arg(desc, arg_sync_pruned_blocks);
@@ -727,7 +733,8 @@ namespace cryptonote
       // and relays a block once its claim has been replayed (Blockchain::sm64_hold).
       unsigned threads = command_line::get_arg(vm, arg_sm64_replay_threads);
       if (threads == 0)
-        threads = std::max(1u, std::thread::hardware_concurrency());
+        threads = std::max(2u, std::thread::hardware_concurrency()) - 1; // leave a core for P2P and RPC (a Pi has 4)
+      sm64coin::set_max_reorg(command_line::get_arg(vm, arg_sm64_max_reorg)); // SM64COIN v0.3: the reorganisation cap
       m_blockchain_storage.sm64_start_queue(threads);
       m_blockchain_storage.sm64_note_history(); // SM64COIN v0.3: restart state (claims, the window)
       m_sm64_stop = false;

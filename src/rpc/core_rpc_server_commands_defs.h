@@ -1174,6 +1174,28 @@ namespace cryptonote
   // SM64COIN: a block's end state (the game's save state after its run, gzip, hex), from the
   // node's cache only (never replayed for the asker): what the next block's run starts from, for
   // clients that trust this node (the web miner).
+  struct COMMAND_RPC_SM64_ALLOW_REORG // SM64COIN v0.3: let one reorganisation deeper than --sm64-max-reorg onto a chain holding `hash`
+  {
+    struct request_t: public rpc_request_base
+    {
+      std::string hash;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_request_base)
+        KV_SERIALIZE(hash)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t: public rpc_response_base
+    {
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_response_base)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
   struct COMMAND_RPC_GET_SM64_STATE
   {
     struct request_t: public rpc_request_base

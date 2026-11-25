@@ -60,6 +60,8 @@ using namespace epee;
 #include "core_rpc_server_error_codes.h"
 #include "p2p/net_node.h"
 #include "version.h"
+#include <algorithm> // SM64COIN
+#include <boost/asio/ip/address_v4.hpp> // SM64COIN: sm64_http_allowed
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
 #define MONERO_DEFAULT_LOG_CATEGORY "daemon.rpc"
@@ -389,6 +391,7 @@ namespace cryptonote
       return false;
     }
 
+    m_sm64_origins = rpc_config->access_control_origins; // SM64COIN (before it is moved below)
     auto rng = [](size_t len, uint8_t *ptr){ return crypto::rand(len, ptr); };
     const bool inited = epee::http_server_impl_base<core_rpc_server, connection_context>::init(
       rng, std::move(port), std::move(bind_ip_str),
@@ -2023,7 +2026,13 @@ namespace cryptonote
         {
           prev_block = (size_t)c < siblings.size() ? cryptonote::get_block_hash(siblings[c]) : tb.prev_id;
           sm64_redirect = true;
-          MWARNING("Proof-of-play: the tip " << tip << " is equivocated; this template builds on " << prev_block);
+          static std::atomic<time_t> s_last_warn{0}; // SM64COIN: once a minute, not per template request
+          const time_t now_s = time(NULL);
+          if (now_s - s_last_warn.load() >= 60)
+          {
+            s_last_warn = now_s;
+            MWARNING("Proof-of-play: the tip " << tip << " is equivocated; templates build on " << prev_block);
+          }
         }
       }
     }
@@ -2373,7 +2382,10 @@ namespace cryptonote
     }
 
     // SM64COIN: store and relay the proof in its smallest encoding (the block
-    // id commits to the decoded inputs, so this doesn't change it).
+    // id commits to the decoded inputs, so this doesn't change it). Not on
+    // restricted RPC: xz -9e before any check would be free CPU for anyone
+    // (DoS audit N4); the submitter's encoding is relayed as it is.
+    if (!(m_restricted && ctx))
     {
       std::string smaller;
       if (sm64coin::reencode(b.sm64_proof, smaller) && smaller.size() < b.sm64_proof.size())
@@ -2422,7 +2434,7 @@ namespace cryptonote
     sm64coin::source_scope sm64_source(sm64_host, sm64_host.empty() ? (sm64coin::source_kind)0 : sm64coin::source_rpc_submit); // SM64COIN
 
     block_verification_context bvc;
-    Blockchain::sm64_take_refusal(); // SM64COIN: (clear)
+    Blockchain::sm64_take_refusal(crypto::null_hash); // SM64COIN: (clear)
     if(!m_core.handle_block_found(b, bvc))
     {
       error_resp.code = CORE_RPC_ERROR_CODE_BLOCK_NOT_ACCEPTED;
@@ -2432,7 +2444,7 @@ namespace cryptonote
     {
       // SM64COIN v0.3: the replay queue refused the claim (one run per key, too early, queue or budget full): say so,
       // instead of OK for a block that will never be added.
-      const std::string refusal = Blockchain::sm64_take_refusal();
+      const std::string refusal = Blockchain::sm64_take_refusal(get_block_hash(b));
       if (!refusal.empty())
       {
         error_resp.code = CORE_RPC_ERROR_CODE_BLOCK_NOT_ACCEPTED;
@@ -2997,6 +3009,13 @@ namespace cryptonote
       error_resp.message = "Invalid hash";
       return false;
     }
+    if (m_restricted && ctx && !sm64coin::rpc_bulk_ok())
+    {
+      // SM64COIN: restricted RPC's bulk answers (megabytes each) share one budget (admit.rs, DoS audit N2).
+      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
+      error_resp.message = "Busy: too many large requests on this node right now, retry in a minute";
+      return false;
+    }
     std::string gz;
     if (!sm64coin::end_state_gz(id, gz))
     {
@@ -3006,6 +3025,83 @@ namespace cryptonote
     }
     res.hash = epee::string_tools::pod_to_hex(id);
     res.state_gz = epee::string_tools::buff_to_hex_nodelimer(gz);
+    if (m_restricted && ctx)
+      sm64coin::rpc_bulk_charge(res.state_gz.size());
+    res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  // SM64COIN: unrestricted RPC can stop the daemon, submit blocks, ban peers. A web page in the
+  // user's browser must not reach it: refuse a request whose Origin header is present and not in
+  // --rpc-access-control-origins (cross-site requests), and one whose Host is a name other than
+  // localhost (DNS rebinding: an attacker's domain resolving to 127.0.0.1). IP-literal hosts (the
+  // bind address, a LAN address) and requests without these headers (curl, miners) pass.
+  bool core_rpc_server::sm64_http_allowed(const epee::net_utils::http::http_request_info& q) const
+  {
+    if (m_restricted)
+      return true;
+    const std::string &origin = q.m_header_info.m_origin;
+    if (!origin.empty() && std::find(m_sm64_origins.begin(), m_sm64_origins.end(), origin) == m_sm64_origins.end() &&
+        std::find(m_sm64_origins.begin(), m_sm64_origins.end(), "*") == m_sm64_origins.end())
+      return false;
+    std::string host = q.m_header_info.m_host;
+    if (host.empty())
+      return true;
+    if (host[0] == '[')
+      return true; // an IPv6 literal
+    const size_t colon = host.rfind(':');
+    if (colon != std::string::npos)
+      host = host.substr(0, colon);
+    boost::system::error_code ec;
+    boost::asio::ip::make_address_v4(host, ec);
+    if (!ec)
+      return true; // an IPv4 literal
+    std::transform(host.begin(), host.end(), host.begin(), ::tolower);
+    return host == "localhost";
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  bool core_rpc_server::handle_http_request(const epee::net_utils::http::http_request_info& query_info, epee::net_utils::http::http_response_info& response, connection_context& m_conn_context)
+  {
+    MINFO("HTTP [" << m_conn_context.m_remote_address.host_str() << "] " << query_info.m_http_method_str << " " << query_info.m_URI);
+    if (!sm64_http_allowed(query_info))
+    {
+      MWARNING("RPC: refusing a request with Origin '" << query_info.m_header_info.m_origin << "', Host '" << query_info.m_header_info.m_host << "' (cross-site or DNS-rebinding; see --rpc-access-control-origins)");
+      response.m_response_code = 403;
+      response.m_response_comment = "Forbidden";
+      return true;
+    }
+    response.m_response_code = 200;
+    response.m_response_comment = "Ok";
+    try
+    {
+      if (!handle_http_request_map(query_info, response, m_conn_context))
+      {
+        response.m_response_code = 404;
+        response.m_response_comment = "Not found";
+      }
+    }
+    catch (const std::exception &e)
+    {
+      MERROR(m_conn_context << "Exception in handle_http_request_map: " << e.what());
+      response.m_response_code = 500;
+      response.m_response_comment = "Internal Server Error";
+    }
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  // SM64COIN v0.3: the operator allows one reorganisation deeper than --sm64-max-reorg (pow/sm64pow/src/reorg.rs).
+  bool core_rpc_server::on_sm64_allow_reorg(const COMMAND_RPC_SM64_ALLOW_REORG::request& req, COMMAND_RPC_SM64_ALLOW_REORG::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    RPC_TRACKER(sm64_allow_reorg);
+    crypto::hash id;
+    if (!epee::string_tools::hex_to_pod(req.hash, id))
+    {
+      error_resp.code = CORE_RPC_ERROR_CODE_WRONG_PARAM;
+      error_resp.message = "Invalid hash";
+      return false;
+    }
+    sm64coin::allow_reorg(id);
+    MGINFO_YELLOW("Proof-of-play: the operator allows one deep reorganisation onto a chain holding " << id);
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }
@@ -3025,8 +3121,14 @@ namespace cryptonote
       error_resp.message = "Invalid hash";
       return false;
     }
+    if (m_restricted && ctx && !sm64coin::rpc_bulk_ok())
+    {
+      error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
+      error_resp.message = "Busy: too many large requests on this node right now, retry in a minute";
+      return false;
+    }
     std::vector<block> cycle;
-    if (!bc.sm64_cycle(tip, cycle))
+    if (!bc.have_block(tip) || !bc.sm64_cycle(tip, cycle)) // SM64COIN: have_block first (an unknown hash used to log a stack trace)
     {
       error_resp.code = CORE_RPC_ERROR_CODE_WRONG_PARAM;
       error_resp.message = "Unknown block";
@@ -3054,6 +3156,8 @@ namespace cryptonote
     res.hash = epee::string_tools::pod_to_hex(tip);
     res.start_height = cycle.empty() ? 0 : get_block_height(cycle.front());
     res.played_pads = epee::string_tools::buff_to_hex_nodelimer(all);
+    if (m_restricted && ctx)
+      sm64coin::rpc_bulk_charge(res.played_pads.size());
     sm64coin::progress p;
     bc.sm64_progress(tip, p);
     res.stars = p.stars;
