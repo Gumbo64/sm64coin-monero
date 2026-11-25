@@ -308,8 +308,19 @@ namespace cryptonote
   void sm64_board::rank()
   {
     std::sort(m_items.begin(), m_items.end(), [](const item &a, const item &b) { return better(a.row, b.row); });
-    if (m_items.size() > TOP_N)
-      m_items.resize(TOP_N);
+    // SM64COIN review: an entry still being re-verified (its hits were reset; claims left) is never
+    // cut by a newcomer meanwhile: only fully verified entries beyond the top 50 are dropped.
+    size_t kept = 0;
+    for (size_t i = 0; i < m_items.size();)
+    {
+      if (kept >= TOP_N && m_items[i].claims.empty())
+        m_items.erase(m_items.begin() + i);
+      else
+      {
+        ++kept;
+        ++i;
+      }
+    }
   }
 
   void sm64_board::save(bool force) // m_scan_lock held
@@ -334,6 +345,12 @@ namespace cryptonote
         {
           fi.entry.heights.push_back(c);
           fi.rewards.clear();
+        }
+        if (!it.claims.empty())
+        {
+          // init() wants them ascending and unique (hits ascending, then claims in random order)
+          std::sort(fi.entry.heights.begin(), fi.entry.heights.end());
+          fi.entry.heights.erase(std::unique(fi.entry.heights.begin(), fi.entry.heights.end()), fi.entry.heights.end());
         }
         f.items.push_back(std::move(fi));
       }
@@ -648,7 +665,36 @@ namespace cryptonote
           const auto &k = known->row.entry;
           // A rename: a later signed timestamp (ties: the smaller name) with a new name.
           if (e.timestamp < k.timestamp || (e.timestamp == k.timestamp && e.name >= k.name) || e.name == k.name)
+          {
+            // SM64COIN review: not a rename, but its heights are evidence of their own (each is
+            // checked against the chain with the entry's view key): heights we don't have yet are
+            // queued as lenient claims (a false one is dropped, never held against the entry), so a
+            // replay of someone's signed entry with only a few of their heights can't keep them
+            // undercounted. Bounded per offer and by the source's entry budget.
+            if (!e.heights.empty() && e.heights.size() <= MAX_HEIGHTS && known->hits.size() + known->claims.size() < MAX_HEIGHTS &&
+                take(s.entries, rpc ? 60 : 150, rpc ? 1.0 : 2.5, 1, t_ms))
+            {
+              std::vector<uint64_t> have;
+              for (const auto &x : known->hits) have.push_back(x.height);
+              have.insert(have.end(), known->claims.begin(), known->claims.end());
+              std::sort(have.begin(), have.end());
+              size_t added = 0;
+              for (uint64_t x : e.heights)
+                if (x < h && !std::binary_search(have.begin(), have.end(), x) && added < 2000 &&
+                    known->hits.size() + known->claims.size() < MAX_HEIGHTS)
+                {
+                  known->claims.push_back(x);
+                  ++added;
+                }
+              if (added)
+              {
+                std::shuffle(known->claims.begin(), known->claims.end(), std::mt19937_64(std::random_device{}()));
+                known->lenient = true;
+                m_work = true;
+              }
+            }
             continue;
+          }
           if (known->changed_at + RENAME_SECONDS > now)
           {
             res.why = "renamed too recently (once per " + std::to_string(RENAME_SECONDS / 60) + " minutes)";
@@ -778,6 +824,14 @@ namespace cryptonote
         m_pending.push_back(std::move(it));
       m_work = true;
       res.queued = true;
+    }
+    if (!rpc)
+    {
+      // SM64COIN review: a peer that keeps sending invalid entries is dropped (strikes decay 1 per 30 s).
+      std::lock_guard<std::mutex> g(m_lock);
+      const auto it = m_sources.find(source);
+      if (it != m_sources.end() && std::max(0.0, it->second.strikes - (double)(now_ms() - it->second.strikes_at) / 30000.0) >= 10)
+        res.abuse = true;
     }
     return res;
   }

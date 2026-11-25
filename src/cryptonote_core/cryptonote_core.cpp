@@ -1720,7 +1720,18 @@ namespace cryptonote
     if (!m_sm64_board.enabled())
       return;
     m_sm64_board_scan.do_call([this]() {
-      const std::vector<sm64_board_entry> joined = m_sm64_board.update(m_blockchain_storage);
+      std::vector<sm64_board_entry> joined;
+      try
+      {
+        joined = m_sm64_board.update(m_blockchain_storage);
+      }
+      catch (const std::exception &e)
+      {
+        // A block read can fail while a reorganisation pops blocks; an exception here would end the
+        // idle loop for good (the timer isn't re-armed). Try again next tick.
+        MWARNING("Leaderboard update interrupted: " << e.what());
+        return true;
+      }
       if (!joined.empty())
       {
         NOTIFY_SM64_BOARD::request arg{};
