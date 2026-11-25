@@ -2106,6 +2106,10 @@ namespace cryptonote
             (sm64coin::max_frames(wdiff, mid - parent_ts) >= req.sm64_frames ? hi : lo) = mid;
           }
           res.sm64_valid_at = std::max(hi, parent_ts + 1);
+          // Never before the chain's launch (mainnet): the node refuses any block stamped earlier, so an earlier
+          // answer announced a block that was never accepted.
+          if (m_core.get_nettype() == MAINNET)
+            res.sm64_valid_at = std::max<uint64_t>(res.sm64_valid_at, sm64coin::launch_timestamp());
         }
       }
       res.sm64_random_amount = t.random_amount;
@@ -2434,12 +2438,27 @@ namespace cryptonote
     }
     sm64coin::source_scope sm64_source(sm64_host, sm64_host.empty() ? (sm64coin::source_kind)0 : sm64coin::source_rpc_submit); // SM64COIN
 
+    // SM64COIN v0.3.1: a block stamped before the chain's launch is refused at once, with the reason (the
+    // chain's blocks can't predate it; mainnet only, test networks run before it).
+    if (m_core.get_nettype() == MAINNET && b.timestamp < sm64coin::launch_timestamp())
+    {
+      error_resp.code = CORE_RPC_ERROR_CODE_BLOCK_NOT_ACCEPTED;
+      error_resp.message = "Block not accepted: stamped " + std::to_string(b.timestamp) + ", before the chain's launch at " + std::to_string(sm64coin::launch_timestamp()) + " (unix seconds); stamp it at or after the launch";
+      return false;
+    }
+
     block_verification_context bvc;
     Blockchain::sm64_take_refusal(crypto::null_hash); // SM64COIN: (clear)
     if(!m_core.handle_block_found(b, bvc))
     {
+      // SM64COIN v0.3.1: always say why (a reason recorded by the node, else the verification flags).
+      const std::string why = Blockchain::sm64_take_refusal(get_block_hash(b));
       error_resp.code = CORE_RPC_ERROR_CODE_BLOCK_NOT_ACCEPTED;
-      error_resp.message = "Block not accepted";
+      error_resp.message = "Block not accepted: " + (!why.empty() ? why :
+        bvc.m_already_exists ? std::string("the node already has this block") :
+        bvc.m_marked_as_orphaned ? std::string("its parent is unknown to this node (orphan)") :
+        bvc.m_verifivation_failed ? std::string("the block failed verification (an invalid or unsigned proof, a timestamp outside the rules, or a bad miner transaction; the node's log says which)") :
+        std::string("the node did not accept it (see its log)"));
       return false;
     }
     {

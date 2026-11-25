@@ -3994,6 +3994,7 @@ bool Blockchain::check_block_timestamp(std::vector<uint64_t>& timestamps, const 
   {
     MERROR_VER("Timestamp of block with id: " << get_block_hash(b) << ", "
       << b.timestamp << ", bigger than local time + 2 hours");
+    sm64_refuse(get_block_hash(b), "stamped " + std::to_string(b.timestamp) + ", too far ahead of this node's clock (more than " + std::to_string(CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT) + " s)");
     return false;
   }
 
@@ -4010,6 +4011,7 @@ bool Blockchain::check_block_timestamp(std::vector<uint64_t>& timestamps, const 
   if(b.timestamp < median_ts)
   {
     MERROR_VER("Timestamp of block with id: " << get_block_hash(b) << ", " << b.timestamp << ", less than median of last " << BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW << " blocks, " << median_ts);
+    sm64_refuse(get_block_hash(b), "stamped " + std::to_string(b.timestamp) + ", before the median timestamp of the last blocks (" + std::to_string(median_ts) + ")");
     return false;
   }
 
@@ -5898,6 +5900,7 @@ bool Blockchain::sm64_check_timestamp(const block& b) const
   if (!sm64_parent_timestamp(b, parent_ts) || b.timestamp <= parent_ts)
   {
     MERROR_VER("Timestamp of block with id: " << get_block_hash(b) << ", " << b.timestamp << ", is not after its parent's");
+    sm64_refuse(get_block_hash(b), "its timestamp " + std::to_string(b.timestamp) + " is not after its parent's");
     return false;
   }
   // A fork from the genesis block (timestamp 0) must not declare time it never spent.
@@ -5905,6 +5908,7 @@ bool Blockchain::sm64_check_timestamp(const block& b) const
   if (m_nettype == MAINNET && b.timestamp < sm64coin::launch_timestamp())
   {
     MERROR_VER("Timestamp of block with id: " << get_block_hash(b) << ", " << b.timestamp << ", predates the chain's launch " << sm64coin::launch_timestamp());
+    sm64_refuse(get_block_hash(b), "stamped " + std::to_string(b.timestamp) + ", before the chain's launch at " + std::to_string(sm64coin::launch_timestamp()));
     return false;
   }
   return true;
