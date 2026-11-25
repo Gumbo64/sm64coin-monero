@@ -1173,6 +1173,7 @@ bool Blockchain::switch_to_alternative_blockchain(std::list<block_extended_info>
     // SM64COIN: only stored (valid ex-main blocks): no relay policy, no nested reorganisation (the
     // pof window or the equivocation penalty must not flip back while the switch is half done).
     m_sm64_readding = true;
+    struct sm64_readd_guard { bool &f; ~sm64_readd_guard() { f = false; } } sm64_guard{m_sm64_readding}; // cleared on any exit
     for (auto& old_ch_ent : disconnected_chain)
     {
       block_verification_context bvc = {};
