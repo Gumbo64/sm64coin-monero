@@ -61,6 +61,7 @@ using namespace epee;
 #include "p2p/net_node.h"
 #include "version.h"
 #include <algorithm> // SM64COIN
+#include <regex> // SM64COIN
 #include <boost/asio/ip/address_v4.hpp> // SM64COIN: sm64_http_allowed
 
 #undef MONERO_DEFAULT_LOG_CATEGORY
@@ -3041,8 +3042,11 @@ namespace cryptonote
     if (m_restricted)
       return true;
     const std::string &origin = q.m_header_info.m_origin;
+    // A page served from this machine (the GUI's local site, a dev server) may call it: its Origin is
+    // http(s)://localhost|127.0.0.1|[::1][:port]. A rebinding page keeps its own (foreign) Origin.
+    static const std::regex local_origin("^https?://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?$", std::regex::icase);
     if (!origin.empty() && std::find(m_sm64_origins.begin(), m_sm64_origins.end(), origin) == m_sm64_origins.end() &&
-        std::find(m_sm64_origins.begin(), m_sm64_origins.end(), "*") == m_sm64_origins.end())
+        std::find(m_sm64_origins.begin(), m_sm64_origins.end(), "*") == m_sm64_origins.end() && !std::regex_match(origin, local_origin))
       return false;
     std::string host = q.m_header_info.m_host;
     if (host.empty())
