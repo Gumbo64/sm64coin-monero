@@ -40,6 +40,16 @@ namespace sm64coin
     return true;
   }
 
+  bool set_features(uint32_t bits, std::string &error)
+  {
+    if (sm64pow_set_features(bits) != 0)
+    {
+      error = last_error();
+      return false;
+    }
+    return true;
+  }
+
   bool initialized() { return s_initialized; }
 
   crypto::hash seed_hash(const std::string &hashing_blob)
@@ -381,6 +391,68 @@ namespace sm64coin
     return true;
   }
   int proof_codec(const std::string &proof) { return sm64pow_proof_codec(u8(proof), proof.size()); }
+
+  // SM64COIN v0.4 stage B (pow/sm64pow/src/included.rs, pool.rs).
+  int verify_records(const std::string &field, const std::string &nonce, const parent_facts &h, unsigned threads, uint32_t &counted, std::string &why)
+  {
+    size_t n = 0;
+    counted = 0;
+    const int r = sm64pow_verify_records(u8(field), field.size(), u8(nonce), nonce.size(), h.height, u8(h.prev), h.prev_is_genesis ? 1 : 0,
+                                         u8(h.nonce), h.nonce.size(), u8(h.proof), h.proof.size(), h.difficulty, threads, &counted, nullptr, 0, &n);
+    if (r != 1)
+      why = last_error();
+    return r;
+  }
+  void pool_tip(const parent_facts &h)
+  {
+    sm64pow_pool_tip(u8(h.id), h.height, u8(h.prev), h.prev_is_genesis ? 1 : 0, u8(h.nonce), h.nonce.size(), u8(h.proof), h.proof.size(), h.difficulty);
+  }
+  int pool_offer(const std::string &record, std::string &why)
+  {
+    const int r = sm64pow_pool_offer(u8(record), record.size());
+    if (r != 1)
+      why = last_error();
+    return r;
+  }
+  bool pool_take_relay(std::string &record)
+  {
+    const size_t n = sm64pow_pool_take_relay(nullptr, 0);
+    if (n == 0)
+      return false;
+    record.assign(n, '\0');
+    return sm64pow_pool_take_relay(reinterpret_cast<uint8_t *>(&record[0]), n) == n;
+  }
+  std::string pool_select(const crypto::hash &tip, crypto::hash &root)
+  {
+    root = crypto::null_hash;
+    const size_t n = sm64pow_pool_select(u8(tip), nullptr, 0, reinterpret_cast<uint8_t *>(root.data));
+    if (n == 0)
+      return std::string();
+    std::string out(n, '\0');
+    if (sm64pow_pool_select(u8(tip), reinterpret_cast<uint8_t *>(&out[0]), n, reinterpret_cast<uint8_t *>(root.data)) != n)
+      return std::string(); // the pool changed between the calls: no records this time
+    return out;
+  }
+  bool pool_field_for_root(const crypto::hash &root, std::string &field)
+  {
+    const size_t n = sm64pow_pool_field_for_root(u8(root), nullptr, 0);
+    if (n == 0)
+      return false;
+    field.assign(n, '\0');
+    return sm64pow_pool_field_for_root(u8(root), reinterpret_cast<uint8_t *>(&field[0]), n) == n;
+  }
+  bool record_from_block(const std::string &block_blob, std::string &record) { return size_then_fill(sm64pow_record_from_block, block_blob, record); }
+  std::string template_nonce(const std::string &miner_nonce, const crypto::public_key &spend, const crypto::public_key &view, const crypto::hash *root)
+  {
+    const uint8_t *sp = reinterpret_cast<const uint8_t *>(spend.data), *vw = reinterpret_cast<const uint8_t *>(view.data);
+    const uint8_t *rt = root ? u8(*root) : nullptr;
+    const size_t n = sm64pow_template_nonce(u8(miner_nonce), miner_nonce.size(), 0, sp, vw, rt, nullptr, 0);
+    if (n == SIZE_MAX)
+      return std::string();
+    std::string out(n, '\0');
+    sm64pow_template_nonce(u8(miner_nonce), miner_nonce.size(), 0, sp, vw, rt, reinterpret_cast<uint8_t *>(&out[0]), n);
+    return out;
+  }
 
   source_scope::source_scope(const std::string &host, source_kind kind, uint64_t top)
     : m_handle(sm64pow_source_enter(host.c_str(), (int32_t)kind, top))

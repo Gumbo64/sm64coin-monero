@@ -582,8 +582,8 @@ namespace cryptonote
 
   public:
     block(): block_header(), hash_valid(false) {}
-    block(const block &b): block_header(b), hash_valid(false), miner_tx(b.miner_tx), tx_hashes(b.tx_hashes), sm64_proof(b.sm64_proof), sm64_sig(b.sm64_sig) { if (b.is_hash_valid()) { hash = b.hash; set_hash_valid(true); } }
-    block &operator=(const block &b) { block_header::operator=(b); hash_valid = false; miner_tx = b.miner_tx; tx_hashes = b.tx_hashes; sm64_proof = b.sm64_proof; sm64_sig = b.sm64_sig; if (b.is_hash_valid()) { hash = b.hash; set_hash_valid(true); } return *this; }
+    block(const block &b): block_header(b), hash_valid(false), miner_tx(b.miner_tx), tx_hashes(b.tx_hashes), sm64_proof(b.sm64_proof), sm64_sig(b.sm64_sig), sm64_proofs(b.sm64_proofs) { if (b.is_hash_valid()) { hash = b.hash; set_hash_valid(true); } }
+    block &operator=(const block &b) { block_header::operator=(b); hash_valid = false; miner_tx = b.miner_tx; tx_hashes = b.tx_hashes; sm64_proof = b.sm64_proof; sm64_sig = b.sm64_sig; sm64_proofs = b.sm64_proofs; if (b.is_hash_valid()) { hash = b.hash; set_hash_valid(true); } return *this; }
     void invalidate_hashes() { set_hash_valid(false); }
     bool is_hash_valid() const { return hash_valid.load(std::memory_order_acquire); }
     void set_hash_valid(bool v) const { hash_valid.store(v,std::memory_order_release); }
@@ -598,6 +598,12 @@ namespace cryptonote
     // key the coinbase extra nonce commits (pow/sm64pow/src/sign.rs). All zero in
     // the genesis block and in templates. In the block id (get_block_id_blob).
     crypto::signature sm64_sig = {};
+    // SM64COIN v0.4 (stage B, pow/sm64pow/src/records.rs): the proof records for the parent's
+    // height, `varint(n) || records` (empty: none): a witness of the root the coinbase extra nonce
+    // commits (not in the block id). The last field of the blob; templates carry it empty (the
+    // daemon reattaches a template's records at submit_block), so a template ends with
+    // 0x00 (empty proof) || 64 zero bytes (empty signature) || 0x00 (no records).
+    std::string sm64_proofs;
 
     // hash cash
     mutable crypto::hash hash;
@@ -615,6 +621,9 @@ namespace cryptonote
       if (sm64_proof.size() > SM64COIN_MAX_PROOF_BYTES)
         return false;
       FIELD(sm64_sig) // SM64COIN v0.3
+      FIELD(sm64_proofs) // SM64COIN v0.4
+      if (sm64_proofs.size() > SM64COIN_MAX_PROOFS_BYTES)
+        return false;
     END_SERIALIZE()
   };
 

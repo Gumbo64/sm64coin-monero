@@ -168,6 +168,7 @@ namespace cryptonote
         MAP_JON_RPC_WE("get_sm64_state",         on_get_sm64_state,            COMMAND_RPC_GET_SM64_STATE) // SM64COIN
         MAP_JON_RPC_WE_IF("sm64_allow_reorg",    on_sm64_allow_reorg,          COMMAND_RPC_SM64_ALLOW_REORG, !m_restricted) // SM64COIN v0.3
         MAP_JON_RPC_WE("sm64_board",             on_sm64_board,                COMMAND_RPC_SM64_BOARD) // SM64COIN
+        MAP_JON_RPC_WE("submit_sm64_proof",      on_submit_sm64_proof,         COMMAND_RPC_SUBMIT_SM64_PROOF) // SM64COIN v0.4
         MAP_JON_RPC_WE("sm64_board_join",        on_sm64_board_join,           COMMAND_RPC_SM64_BOARD_JOIN) // SM64COIN
         MAP_JON_RPC_WE_IF("sm64_board_set",      on_sm64_board_set,            COMMAND_RPC_SM64_BOARD_SET, !m_restricted) // SM64COIN
         MAP_JON_RPC_WE("getblock",                on_get_block,                 COMMAND_RPC_GET_BLOCK)
@@ -252,6 +253,7 @@ namespace cryptonote
     bool on_get_sm64_state(const COMMAND_RPC_GET_SM64_STATE::request& req, COMMAND_RPC_GET_SM64_STATE::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL); // SM64COIN
     bool on_sm64_allow_reorg(const COMMAND_RPC_SM64_ALLOW_REORG::request& req, COMMAND_RPC_SM64_ALLOW_REORG::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL); // SM64COIN v0.3
     bool on_sm64_board(const COMMAND_RPC_SM64_BOARD::request& req, COMMAND_RPC_SM64_BOARD::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL); // SM64COIN
+    bool on_submit_sm64_proof(const COMMAND_RPC_SUBMIT_SM64_PROOF::request& req, COMMAND_RPC_SUBMIT_SM64_PROOF::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL); // SM64COIN v0.4
     bool on_sm64_board_set(const COMMAND_RPC_SM64_BOARD_SET::request& req, COMMAND_RPC_SM64_BOARD_SET::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL); // SM64COIN
     bool on_sm64_board_join(const COMMAND_RPC_SM64_BOARD_JOIN::request& req, COMMAND_RPC_SM64_BOARD_JOIN::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL); // SM64COIN
     bool on_get_connections(const COMMAND_RPC_GET_CONNECTIONS::request& req, COMMAND_RPC_GET_CONNECTIONS::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx = NULL);

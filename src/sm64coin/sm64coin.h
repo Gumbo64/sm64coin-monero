@@ -21,6 +21,7 @@ namespace sm64coin
   // Loads the ROM (path empty: $SM64COIN_ROM, ./baserom.us.z64, ~/.sm64coin/baserom.us.z64).
   bool init(const std::string &rom_path, std::string &error);
   bool initialized();
+  bool set_features(uint32_t bits, std::string &error); // SM64COIN v0.4: the network's consensus features (features.rs bits)
 
   // The perturbation seed: cn_fast_hash of a block hashing blob, all 256 bits
   // (the caller passes the blob with the timestamp zeroed: see
@@ -177,6 +178,21 @@ namespace sm64coin
   int codecs_need(const std::string &proof, const std::string &mask);
   bool transcode(const std::string &proof, const std::string *inputs, const std::string &mask, std::string &out, std::string &why);
   int proof_codec(const std::string &proof);
+  // SM64COIN v0.4 stage B (records.rs, included.rs, pool.rs): included proofs as data. Block h is the
+  // including block's parent (the records are proofs for its height): its id, height, its parent
+  // B_{h-1} (and whether that is the genesis block), its extra nonce, its proof and its retarget difficulty.
+  struct parent_facts { crypto::hash id, prev; uint64_t height = 0; bool prev_is_genesis = false; std::string nonce, proof; uint64_t difficulty = 0; };
+  // A block's records (its sm64_proofs field and its extra nonce's root): 1 valid, 0 invalid, -3 bad
+  // witness (never an invalid block: drop the copy), -2 B_{h-1}'s state isn't cached, -1 error.
+  int verify_records(const std::string &field, const std::string &nonce, const parent_facts &h, unsigned threads, uint32_t &counted, std::string &why);
+  void pool_tip(const parent_facts &h); // our tip is block h: the pool collects proofs for its height
+  int pool_offer(const std::string &record, std::string &why); // 1 new (relay), 0 ignore, -1 invalid / -3 bad witness (drop the sender), -2 no state
+  bool pool_take_relay(std::string &record); // the next record to gossip (NOTIFY_SM64_PROOF)
+  std::string pool_select(const crypto::hash &tip, crypto::hash &root); // the field for a template on top of tip (empty: none)
+  bool pool_field_for_root(const crypto::hash &root, std::string &field); // a selection's field, by its root
+  bool record_from_block(const std::string &block_blob, std::string &record); // a sealed block as a proof record
+  // The v0.4 extra nonce: the miner's 0x64 || key + the payout TLV + the root TLV (root null: none). Empty if invalid.
+  std::string template_nonce(const std::string &miner_nonce, const crypto::public_key &spend, const crypto::public_key &view, const crypto::hash *root);
   // Frames the proof's run lasted (0 if it doesn't decode).
   uint32_t proof_frames(const std::string &proof);
 

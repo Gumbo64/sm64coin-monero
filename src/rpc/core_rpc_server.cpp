@@ -2396,6 +2396,28 @@ namespace cryptonote
       }
     }
 
+    // SM64COIN v0.4 stage B: templates go to miners without their proof records; reattach the
+    // records whose root this block's extra nonce commits (the pool remembers its selections).
+    if (b.sm64_proofs.empty())
+    {
+      const std::string nonce = Blockchain::sm64_miner_nonce(b);
+      for (size_t i = 33; i + 2 <= nonce.size(); i += 2 + (uint8_t)nonce[i + 1])
+      {
+        if ((uint8_t)nonce[i] == 0x02 && (uint8_t)nonce[i + 1] == 32 && i + 34 <= nonce.size())
+        {
+          crypto::hash root;
+          memcpy(root.data, nonce.data() + i + 2, 32);
+          std::string field;
+          if (sm64coin::pool_field_for_root(root, field))
+          {
+            b.sm64_proofs = field;
+            b.invalidate_hashes();
+          }
+          break;
+        }
+      }
+    }
+
     // Fix from Boolberry neglects to check block
     // size, do that with the function below
     if(!m_core.check_incoming_block_size(blockblob))
@@ -2980,6 +3002,34 @@ namespace cryptonote
         res.sm64_event = sm64coin::block_event(get_block_hash(blk));
       }
     }
+    res.status = CORE_RPC_STATUS_OK;
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------------
+  // SM64COIN v0.4 stage B
+  bool core_rpc_server::on_submit_sm64_proof(const COMMAND_RPC_SUBMIT_SM64_PROOF::request& req, COMMAND_RPC_SUBMIT_SM64_PROOF::response& res, epee::json_rpc::error& error_resp, const connection_context *ctx)
+  {
+    RPC_TRACKER(submit_sm64_proof);
+    CHECK_CORE_READY();
+    blobdata blob, record;
+    if (!string_tools::parse_hexstr_to_binbuff(req.blob, blob) || !sm64coin::record_from_block(blob, record))
+    {
+      error_resp.code = CORE_RPC_ERROR_CODE_WRONG_BLOCKBLOB;
+      error_resp.message = "Wrong block blob";
+      return false;
+    }
+    const std::string host = m_restricted && ctx ? ctx->m_remote_address.host_str() : std::string();
+    if (!host.empty() && !sm64coin::rpc_submit_allowed(host))
+    {
+      error_resp.code = CORE_RPC_ERROR_CODE_BLOCK_NOT_ACCEPTED;
+      error_resp.message = "Busy: this address sent an invalid proof recently, retry later";
+      return false;
+    }
+    sm64coin::source_scope sm64_source(host, host.empty() ? (sm64coin::source_kind)0 : sm64coin::source_rpc_submit);
+    sm64coin::rpc_scope sm64_rpc; // the replay draws on the RPC replay budget
+    m_core.get_blockchain_storage().sm64_pool_tip();
+    res.result = sm64coin::pool_offer(record, res.reason);
+    MINFO("Proof-of-play: submit_sm64_proof: " << res.result << (res.reason.empty() ? std::string() : " (" + res.reason + ")"));
     res.status = CORE_RPC_STATUS_OK;
     return true;
   }

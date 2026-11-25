@@ -1703,7 +1703,22 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
   //make blocks coin-base tx looks close to real coinbase tx to get truthful blob weight
   uint8_t hf_version = b.major_version;
   size_t max_outs = hf_version >= 4 ? 1 : 11;
-  bool r = construct_miner_tx(height, median_weight, already_generated_coins, txs_weight, fee, miner_address, b.miner_tx, ex_nonce, max_outs, hf_version);
+  // SM64COIN v0.4: a keyed extra nonce (0x64 || miner key) also commits the template's payout
+  // address and the root of the proof records it includes (stage B; records.rs TLVs). The records
+  // themselves are not in the template blob: submit_block reattaches them by root.
+  blobdata sm64_nonce = ex_nonce;
+  if (ex_nonce.size() >= 33 && (uint8_t)ex_nonce[0] == 0x64)
+  {
+    sm64_pool_tip();
+    crypto::hash root;
+    const std::string field = sm64coin::pool_select(b.prev_id, root);
+    const std::string n = sm64coin::template_nonce(ex_nonce, miner_address.m_spend_public_key, miner_address.m_view_public_key, field.empty() ? nullptr : &root);
+    if (!n.empty())
+      sm64_nonce = n;
+    if (!field.empty())
+      MINFO("Proof-of-play: template on " << b.prev_id << " includes proof records (root " << root << ", " << field.size() << " bytes)");
+  }
+  bool r = construct_miner_tx(height, median_weight, already_generated_coins, txs_weight, fee, miner_address, b.miner_tx, sm64_nonce, max_outs, hf_version);
   CHECK_AND_ASSERT_MES(r, false, "Failed to construct miner tx, first chance");
   size_t cumulative_weight = txs_weight + get_transaction_weight(b.miner_tx);
 #if defined(DEBUG_CREATE_BLOCK_TEMPLATE)
@@ -1712,7 +1727,7 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
 #endif
   for (size_t try_count = 0; try_count != 10; ++try_count)
   {
-    r = construct_miner_tx(height, median_weight, already_generated_coins, cumulative_weight, fee, miner_address, b.miner_tx, ex_nonce, max_outs, hf_version);
+    r = construct_miner_tx(height, median_weight, already_generated_coins, cumulative_weight, fee, miner_address, b.miner_tx, sm64_nonce, max_outs, hf_version);
 
     CHECK_AND_ASSERT_MES(r, false, "Failed to construct miner tx, second chance");
     size_t coinbase_weight = get_transaction_weight(b.miner_tx);
@@ -6029,10 +6044,89 @@ bool Blockchain::sm64_check_proof(const block& b, const difficulty_type& difficu
     MERROR_VER("Proof-of-play rejected (seed " << seed << ", difficulty " << difficulty << "): " << why);
     return false;
   }
+  // SM64COIN v0.4 stage B: the block's proof records (proofs for its parent's height; records.rs).
+  // A bad witness, like a bad encoding, drops this copy, never the block id.
+  {
+    sm64coin::parent_facts h;
+    if (!sm64_parent_facts(b.prev_id, h))
+    {
+      MERROR_VER("Proof-of-play: block " << id << ": its parent's facts are unknown");
+      return false;
+    }
+    uint32_t counted = 0;
+    const std::string nonce_all = sm64_miner_nonce(b);
+    int r = sm64coin::verify_records(b.sm64_proofs, nonce_all, h, 4, counted, why);
+    if (r == -2 && sm64_rebuild(h.prev))
+      r = sm64coin::verify_records(b.sm64_proofs, nonce_all, h, 4, counted, why);
+    if (r == -3)
+    {
+      MERROR_VER("Proof-of-play: block " << id << " arrived with a bad witness for its proof records (not an invalid block): " << why);
+      return false;
+    }
+    if (r != 1)
+    {
+      MERROR_VER("Proof-of-play: block " << id << " has invalid proof records: " << why);
+      return false;
+    }
+    if (!b.sm64_proofs.empty() && b.sm64_proofs != std::string(1, '\0'))
+      MINFO("Proof-of-play: block " << id << " carries proof records (" << b.sm64_proofs.size() << " bytes, " << counted << " counted)");
+  }
   if (eligible)
     sm64coin::note_eligible(id, b.prev_id, seed, (uint32_t)frames, b.timestamp, b.sm64_sig, b.sm64_proof); // SM64COIN v0.3: publish-on-find's window (pof.rs)
   MINFO("Proof-of-play accepted: " << frames << " frames, seed " << seed << ", difficulty " << difficulty);
   return true;
+}
+//------------------------------------------------------------------
+bool Blockchain::sm64_parent_facts(const crypto::hash& id, sm64coin::parent_facts& f) const
+{
+  // SM64COIN v0.4: block `id` (main chain or alternative) as the records' block h.
+  block h;
+  if (!get_block_by_hash(id, h))
+    return false;
+  if (h.miner_tx.vin.size() != 1 || h.miner_tx.vin.front().type() != typeid(txin_gen))
+    return false;
+  f.id = id;
+  f.height = boost::get<txin_gen>(h.miner_tx.vin.front()).height;
+  f.nonce = sm64_miner_nonce(h);
+  f.proof = h.sm64_proof;
+  if (f.height == 0)
+  {
+    f.prev = crypto::null_hash; // the genesis block: no proofs for its height
+    f.prev_is_genesis = true;
+    f.difficulty = 1;
+    return true;
+  }
+  f.prev = h.prev_id;
+  f.prev_is_genesis = f.height == 1;
+  // Its retarget difficulty: the cumulative difficulty minus its parent's.
+  auto cumulative = [&](const crypto::hash &bid, uint64_t height, difficulty_type &cd) -> bool {
+    if (height < m_db->height() && m_db->get_block_hash_from_height(height) == bid)
+    {
+      cd = m_db->get_block_cumulative_difficulty(height);
+      return true;
+    }
+    alt_block_data_t data;
+    if (!m_db->get_alt_block(bid, &data, nullptr))
+      return false;
+    cd = data.cumulative_difficulty_high;
+    cd = (cd << 64) + data.cumulative_difficulty_low;
+    return true;
+  };
+  difficulty_type cd, pcd;
+  if (!cumulative(id, f.height, cd) || !cumulative(h.prev_id, f.height - 1, pcd) || cd < pcd)
+    return false;
+  const difficulty_type d = cd - pcd;
+  f.difficulty = d > std::numeric_limits<uint64_t>::max() ? std::numeric_limits<uint64_t>::max() : d.convert_to<uint64_t>();
+  return true;
+}
+//------------------------------------------------------------------
+void Blockchain::sm64_pool_tip() const
+{
+  // SM64COIN v0.4 stage B: the proof pool collects proofs for our tip's height.
+  sm64coin::parent_facts h;
+  if (m_db->height() == 0 || !sm64_parent_facts(m_db->top_block_hash(), h))
+    return;
+  sm64coin::pool_tip(h);
 }
 //------------------------------------------------------------------
 bool Blockchain::sm64_played(const block& b, std::string& pads, bool wanted) const

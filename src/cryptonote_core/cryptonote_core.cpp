@@ -539,6 +539,14 @@ namespace cryptonote
         MERROR("Cannot load the SM64 ROM: " << rom_error << ". Pass --sm64-rom <path to a US .z64>.");
         return false;
       }
+      // SM64COIN v0.4: the network's consensus stage (cryptonote_config.h).
+      const uint32_t sm64_features = m_nettype == MAINNET ? SM64COIN_V04_FEATURES : SM64COIN_V04_FEATURES_TESTNET;
+      if (!sm64coin::set_features(sm64_features, rom_error))
+      {
+        MERROR("Proof-of-play features " << sm64_features << ": " << rom_error);
+        return false;
+      }
+      MGINFO("Proof-of-play v0.4 features: " << sm64_features << " (1 committed inputs, 2 included proofs, 4 proof weight, 8 proof rewards)");
       if (sm64coin::target_seconds() != DIFFICULTY_TARGET_V2)
         MWARNING("Rules target " << sm64coin::target_seconds() << " s between blocks but DIFFICULTY_TARGET_V2 is " << DIFFICULTY_TARGET_V2);
       MGINFO("Proof-of-play rules: " << sm64coin::rules_name() << " - " << sm64coin::rules_goal());

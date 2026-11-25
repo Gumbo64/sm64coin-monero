@@ -99,6 +99,7 @@ namespace cryptonote
       HANDLE_NOTIFY_T2(NOTIFY_SM64_BOARD, &cryptonote_protocol_handler::handle_notify_sm64_board) // SM64COIN
       HANDLE_NOTIFY_T2(NOTIFY_SM64_EVIDENCE, &cryptonote_protocol_handler::handle_notify_sm64_evidence) // SM64COIN v0.3
       HANDLE_NOTIFY_T2(NOTIFY_SM64_CODECS, &cryptonote_protocol_handler::handle_notify_sm64_codecs) // SM64COIN v0.4
+      HANDLE_NOTIFY_T2(NOTIFY_SM64_PROOF, &cryptonote_protocol_handler::handle_notify_sm64_proof) // SM64COIN v0.4
     END_INVOKE_MAP2()
 
     bool on_idle();
@@ -151,6 +152,8 @@ namespace cryptonote
     int handle_notify_sm64_evidence(int command, NOTIFY_SM64_EVIDENCE::request& arg, cryptonote_connection_context& context); // SM64COIN v0.3
     int handle_notify_sm64_codecs(int command, NOTIFY_SM64_CODECS::request& arg, cryptonote_connection_context& context); // SM64COIN v0.4
     void sm64_send_codecs(cryptonote_connection_context& context); // SM64COIN v0.4: our advert, once per connection
+    int handle_notify_sm64_proof(int command, NOTIFY_SM64_PROOF::request& arg, cryptonote_connection_context& context); // SM64COIN v0.4
+    void sm64_relay_proofs(); // SM64COIN v0.4: gossip the pool's new records (on_idle)
     // SM64COIN v0.4: `block_blob` with its proof in an encoding a peer with codec set `mask` decodes (codecs.rs); false: send it as is.
     bool sm64_blob_for_peer(const blobdata& block_blob, const std::string& mask, blobdata& out);
 		

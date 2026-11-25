@@ -456,4 +456,22 @@ namespace cryptonote
     typedef epee::misc_utils::struct_init<request_t> request;
   };
 
+  /************************************************************************/
+  /*                                                                      */
+  /************************************************************************/
+  struct NOTIFY_SM64_PROOF // SM64COIN v0.4 stage B: a proof record for our tip's height (pow/sm64pow/src/pool.rs)
+  {
+    const static int ID = BC_COMMANDS_POOL_BASE + 14;
+
+    struct request_t
+    {
+      std::string record; // records.rs wire format (one record, no count prefix)
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(record)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+  };
+
 }

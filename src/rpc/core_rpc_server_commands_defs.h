@@ -1090,6 +1090,35 @@ namespace cryptonote
   // them on a fresh game from power-on (no perturbation needed: the pads are
   // the ones played) reaches that block's end state, where the next block's
   // run starts.
+  // SM64COIN v0.4 stage B: a sealed block that won't win (a runner-up for its height), offered to the
+  // proof pool as a proof record (pow/sm64pow/src/pool.rs) and gossiped (NOTIFY_SM64_PROOF).
+  struct COMMAND_RPC_SUBMIT_SM64_PROOF
+  {
+    struct request_t: public rpc_request_base
+    {
+      std::string blob; // hex: the sealed block (template + committed proof + signature), as for submit_block
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_request_base)
+        KV_SERIALIZE(blob)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+
+    struct response_t: public rpc_response_base
+    {
+      int32_t result; // 1 new (in the pool, relayed), 0 ignored (known, not for our tip's height, outside the window, pool full), -1 invalid, -3 bad encoding, -2 the parent state isn't available
+      std::string reason;
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE_PARENT(rpc_response_base)
+        KV_SERIALIZE(result)
+        KV_SERIALIZE(reason)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<response_t> response;
+  };
+
   // SM64COIN: the shared mining leaderboard (cryptonote_core/sm64_board.h).
   struct COMMAND_RPC_SM64_BOARD
   {

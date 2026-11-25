@@ -346,6 +346,8 @@ namespace cryptonote
     bool sm64_check_proof(const block& b, const difficulty_type& difficulty, bool eligible = true) const; // SM64COIN v0.3: eligible = processed now (publish-on-find)
     // The block's parent for the chain rules: whether it is the genesis block, and the timestamp gap.
     bool sm64_parent_ref(const block& b, bool& genesis_parent, uint64_t& gap) const;
+    bool sm64_parent_facts(const crypto::hash& id, sm64coin::parent_facts& f) const; // SM64COIN v0.4: block `id` as the parent of a block with proof records
+    void sm64_pool_tip() const; // SM64COIN v0.4 stage B: tell the proof pool our tip
     // Makes block `h`'s end state available (replays its ancestors back to the cycle start as needed).
     bool sm64_rebuild(const crypto::hash& h) const;
     // The perturbation seed of a block: cn_fast_hash of its hashing blob with the

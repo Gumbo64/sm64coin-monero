@@ -1699,6 +1699,7 @@ skip:
     m_standby_checker.do_call(boost::bind(&t_cryptonote_protocol_handler<t_core>::check_standby_peers, this));
     m_sync_search_checker.do_call(boost::bind(&t_cryptonote_protocol_handler<t_core>::update_sync_search, this));
     sm64_evidence_to_new_peers(); // SM64COIN v0.3
+    sm64_relay_proofs(); // SM64COIN v0.4
     return m_core.on_idle();
   }
   //------------------------------------------------------------------------------------------------------------------------
@@ -2894,6 +2895,51 @@ skip:
     NOTIFY_SM64_CODECS::request arg;
     arg.codecs = sm64coin::codecs_advert();
     post_notify<NOTIFY_SM64_CODECS>(arg, context);
+  }
+  //------------------------------------------------------------------------------------------------------------------------
+  template<class t_core>
+  int t_cryptonote_protocol_handler<t_core>::handle_notify_sm64_proof(int command, NOTIFY_SM64_PROOF::request& arg, cryptonote_connection_context& context)
+  {
+    // SM64COIN v0.4 stage B: a proof record from a peer. pow/sm64pow's pool checks it (cheap checks
+    // first, then one replay) and queues it for relay if it is new (sm64_relay_proofs, on idle).
+    if (context.m_state == cryptonote_connection_context::state_before_handshake)
+      return 1;
+    sm64coin::source_scope sm64_source(context.m_remote_address.host_str(), sm64coin::source_relay);
+    m_core.get_blockchain_storage().sm64_pool_tip();
+    std::string why;
+    const int r = sm64coin::pool_offer(arg.record, why);
+    if (r == 1)
+      MINFO(context << "Proof-of-play: new proof record from the peer (" << arg.record.size() << " bytes)");
+    else if (r == -1 || r == -3)
+    {
+      // An honest node verifies a record before it relays it: invalid or a bad witness is the sender's fault.
+      LOG_DEBUG_CC(context, "SM64 proof: " << (r == -1 ? "invalid" : "bad witness") << " (" << why << "), dropping the connection");
+      drop_connection(context, false, false);
+    }
+    return 1;
+  }
+  //------------------------------------------------------------------------------------------------------------------------
+  template<class t_core>
+  void t_cryptonote_protocol_handler<t_core>::sm64_relay_proofs()
+  {
+    std::string record;
+    for (int k = 0; k < 64 && sm64coin::pool_take_relay(record); ++k)
+    {
+      std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>> conns;
+      m_p2p->for_each_connection([&](cryptonote_connection_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)
+      {
+        if (peer_id && context.m_state >= cryptonote_connection_context::state_synchronizing)
+          conns.push_back({context.m_remote_address.get_zone(), context.m_connection_id});
+        return true;
+      });
+      if (conns.empty())
+        continue;
+      NOTIFY_SM64_PROOF::request arg;
+      arg.record = std::move(record);
+      epee::levin::message_writer blob{4096};
+      epee::serialization::store_t_to_binary(arg, blob.buffer);
+      m_p2p->relay_notify_to_list(NOTIFY_SM64_PROOF::ID, std::move(blob), std::move(conns));
+    }
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
