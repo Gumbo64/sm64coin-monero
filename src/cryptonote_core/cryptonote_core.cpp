@@ -720,6 +720,7 @@ namespace cryptonote
     }
     r = m_blockchain_storage.init(db.release(), m_nettype, m_offline, regtest ? &regtest_test_options : test_options, fixed_difficulty, get_checkpoints);
     m_sm64_board.init(m_config_folder + "/sm64_board.json", m_nettype); // SM64COIN
+    sm64coin::evidence_persist(m_config_folder + "/sm64_evidence.bin"); // SM64COIN v0.3: recent equivocation evidence across restarts
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize blockchain storage");
     {
       // SM64COIN: the replay queue's workers (all cores by default) and the releaser that adds
@@ -728,6 +729,7 @@ namespace cryptonote
       if (threads == 0)
         threads = std::max(1u, std::thread::hardware_concurrency());
       m_blockchain_storage.sm64_start_queue(threads);
+      m_blockchain_storage.sm64_note_history(); // SM64COIN v0.3: restart state (claims, the window)
       m_sm64_stop = false;
       m_sm64_releaser = std::thread([this]() {
         while (!m_sm64_stop)
@@ -1387,6 +1389,7 @@ namespace cryptonote
       arg.current_blockchain_height = get_block_height(b) + 1;
       block_to_blob(b, arg.b.block);
       m_pprotocol->relay_block(arg, exclude_context);
+      sm64_relay_evidence_for(b); // SM64COIN v0.3
     }
     return true;
   }
@@ -1667,7 +1670,17 @@ namespace cryptonote
       arg.current_blockchain_height = get_block_height(b) + 1;
       arg.b.block = blob;
       m_pprotocol->relay_block(arg, exclude_context);
+      sm64_relay_evidence_for(b); // SM64COIN v0.3
     }
+  }
+  //-----------------------------------------------------------------------------------------------
+  void core::sm64_relay_evidence_for(const block &b)
+  {
+    // SM64COIN v0.3: a block whose template has equivocation evidence travels with it, so a node
+    // that gets the block also gets the reason not to build on it.
+    NOTIFY_SM64_EVIDENCE::request ev;
+    if (sm64coin::evidence_for(Blockchain::sm64_seed(b), ev.evidence))
+      get_protocol()->relay_sm64_evidence(ev, boost::uuids::nil_uuid());
   }
   //-----------------------------------------------------------------------------------------------
   std::vector<sm64_board_entry> core::sm64_board_offer(const std::vector<sm64_board_entry> &entries, const boost::uuids::uuid &source, std::string *why)

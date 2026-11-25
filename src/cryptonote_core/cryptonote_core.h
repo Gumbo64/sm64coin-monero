@@ -116,6 +116,7 @@ namespace cryptonote
       * @return true
       */
      void sm64_release(const crypto::hash &id, int verdict, const std::string &why); // SM64COIN: the replay queue's verdict for a claim
+     void sm64_relay_evidence_for(const block &b); // SM64COIN v0.3: send the evidence about b's template along with it
      // SM64COIN: the shared mining leaderboard (sm64_board.h). Offer admits
      // and relays what changes the board.
      std::vector<sm64_board_entry> sm64_board_offer(const std::vector<sm64_board_entry> &entries, const boost::uuids::uuid &source, std::string *why = nullptr);

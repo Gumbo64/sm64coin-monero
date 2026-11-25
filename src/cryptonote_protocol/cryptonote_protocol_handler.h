@@ -35,6 +35,7 @@
 #pragma once
 
 #include <boost/program_options/variables_map.hpp>
+#include <set>
 #include <string>
 
 #include "byte_slice.h"
@@ -188,6 +189,8 @@ namespace cryptonote
     epee::math_helper::once_a_time_seconds<8> m_idle_peer_kicker;
     epee::math_helper::once_a_time_milliseconds<100> m_standby_checker;
     epee::math_helper::once_a_time_seconds<101> m_sync_search_checker;
+    std::set<boost::uuids::uuid> m_sm64_evidence_sent; // SM64COIN v0.3: connections that got the recent evidence (on_idle thread only)
+    void sm64_evidence_to_new_peers(); // SM64COIN v0.3
     epee::math_helper::once_a_time_seconds<43> m_bad_peer_checker;
     std::unordered_map<epee::net_utils::zone, unsigned int> m_max_out_peers;
     mutable epee::critical_section m_max_out_peers_lock;

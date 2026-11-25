@@ -1686,7 +1686,44 @@ skip:
     m_idle_peer_kicker.do_call(boost::bind(&t_cryptonote_protocol_handler<t_core>::kick_idle_peers, this));
     m_standby_checker.do_call(boost::bind(&t_cryptonote_protocol_handler<t_core>::check_standby_peers, this));
     m_sync_search_checker.do_call(boost::bind(&t_cryptonote_protocol_handler<t_core>::update_sync_search, this));
+    sm64_evidence_to_new_peers(); // SM64COIN v0.3
     return m_core.on_idle();
+  }
+  //------------------------------------------------------------------------------------------------------------------------
+  template<class t_core>
+  void t_cryptonote_protocol_handler<t_core>::sm64_evidence_to_new_peers()
+  {
+    // SM64COIN v0.3: a peer that connected since the last call gets the recent equivocation
+    // evidence (accused blocks within 8 heights of our tip), once per connection.
+    std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>> fresh;
+    {
+      std::set<boost::uuids::uuid> alive;
+      m_p2p->for_each_connection([&](cryptonote_connection_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)
+      {
+        if (context.m_state < cryptonote_connection_context::state_synchronizing)
+          return true;
+        alive.insert(context.m_connection_id);
+        if (!m_sm64_evidence_sent.count(context.m_connection_id))
+          fresh.push_back({context.m_remote_address.get_zone(), context.m_connection_id});
+        return true;
+      });
+      for (auto it = m_sm64_evidence_sent.begin(); it != m_sm64_evidence_sent.end();)
+        it = alive.count(*it) ? std::next(it) : m_sm64_evidence_sent.erase(it);
+      for (const auto &c : fresh)
+        m_sm64_evidence_sent.insert(c.second);
+    }
+    if (fresh.empty())
+      return;
+    std::vector<std::string> recent;
+    sm64coin::evidence_recent(m_core.get_current_blockchain_height() - 1, recent);
+    for (std::string &e : recent)
+    {
+      NOTIFY_SM64_EVIDENCE::request arg;
+      arg.evidence = std::move(e);
+      epee::levin::message_writer blob{1024};
+      epee::serialization::store_t_to_binary(arg, blob.buffer);
+      m_p2p->relay_notify_to_list(NOTIFY_SM64_EVIDENCE::ID, std::move(blob), std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>>(fresh));
+    }
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
@@ -2691,12 +2728,12 @@ skip:
     // SM64COIN v0.3: equivocation evidence from a peer. pow/sm64pow verifies
     // it (two signatures) and queues it for relay if it is new; the core
     // relays the queue on idle (core::on_idle -> sm64coin::take_evidence).
-    if (arg.evidence.size() != 272)
+    if (arg.evidence.size() <= 272 || arg.evidence.size() > sm64coin::evidence_max())
     {
       LOG_DEBUG_CC(context, "SM64 evidence: " << arg.evidence.size() << " bytes, dropped");
       return 1;
     }
-    const int r = sm64coin::evidence_received(arg.evidence);
+    const int r = sm64coin::evidence_received(arg.evidence, context.m_remote_address.host_str(), m_core.get_current_blockchain_height() - 1);
     if (r == 1)
       MWARNING("Proof-of-play: equivocation evidence from " << context.m_remote_address.str());
     else if (r < 0)

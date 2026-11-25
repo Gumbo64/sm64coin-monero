@@ -1318,8 +1318,9 @@ bool Blockchain::prevalidate_miner_transaction(const block& b, uint64_t height, 
     return false;
   }
   MDEBUG("Miner tx hash: " << get_transaction_hash(b.miner_tx));
-  // SM64COIN: the window was 10 blocks until it became 4 (genesis and the first blocks carry 10); either is valid.
-  CHECK_AND_ASSERT_MES(b.miner_tx.unlock_time == height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW || b.miner_tx.unlock_time == height + 10, false, "coinbase transaction transaction has the wrong unlock time=" << b.miner_tx.unlock_time << ", expected " << height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
+  // SM64COIN: the genesis coinbase (burned, built from config) carries a 10-block unlock; every other
+  // coinbase carries CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW (v0.3: 72). (v0.2 also accepted 10 for its first blocks.)
+  CHECK_AND_ASSERT_MES(b.miner_tx.unlock_time == height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW || (height == 0 && b.miner_tx.unlock_time == 10), false, "coinbase transaction transaction has the wrong unlock time=" << b.miner_tx.unlock_time << ", expected " << height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
 
   //check outs overflow
   if(!check_outs_overflow(b.miner_tx))
@@ -2108,7 +2109,7 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
 
       return r;
     }
-    else if(sm64coin::weigh_by_blocks() ? (m_db->height() - 1 < bei.height || sm64_displaces(alt_chain)) : main_chain_cumulative_difficulty < bei.cumulative_difficulty) // SM64COIN: longer chain (rules), else difficulty bigger than in main chain; v0.3: or publish-on-find's window (pof.rs)
+    else if(sm64coin::weigh_by_blocks() ? (sm64_fork_choice(alt_chain) || sm64_displaces(alt_chain)) : main_chain_cumulative_difficulty < bei.cumulative_difficulty) // SM64COIN: longer chain (rules; v0.3: with the equivocation penalty, equivocation.rs), else difficulty bigger than in main chain; v0.3: or publish-on-find's window (pof.rs)
     {
       //do reorganize!
       MGINFO_GREEN("###### REORGANIZE on height: " << alt_chain.front().height << " of " << m_db->height() - 1 << " with cum_difficulty " << m_db->get_block_cumulative_difficulty(m_db->height() - 1) << std::endl << " alternative blockchain size: " << alt_chain.size() << " with cum_difficulty " << bei.cumulative_difficulty);
@@ -4694,6 +4695,8 @@ bool Blockchain::add_new_block(const block& bl, block_verification_context& bvc,
   CRITICAL_REGION_LOCAL(m_tx_pool);//to avoid deadlock lets lock tx_pool for whole add/reorganize process
   CRITICAL_REGION_LOCAL1(m_blockchain_lock);
   db_rtxn_guard rtxn_guard(m_db);
+  // SM64COIN v0.3: equivocation evidence formed while handling this block carries its template (relayable).
+  sm64coin::block_scope sm64_scope(block_to_blob(bl), m_db->height() ? m_db->height() - 1 : 0);
   int where = 0;
   if(have_block(id, &where))
   {
@@ -5218,7 +5221,17 @@ bool Blockchain::prepare_handle_incoming_blocks(const std::vector<block_complete
           std::string why;
           if (!sm64_check_signature(b, why))
             break; // SM64COIN v0.3: no replay past a bad signature (the sequential check rejects it)
-          batch.push_back({get_block_hash(b), b.prev_id, b.prev_id == genesis, sm64_seed(b), &b.sm64_proof});
+          sm64coin::preverify_block pb{get_block_hash(b), b.prev_id, b.prev_id == genesis, sm64_seed(b), &b.sm64_proof};
+          // The gap to the parent bounds what's worth a replay (finding 6: a span of 36,000-frame junk
+          // needs room in the stamps). The parent is the previous block of the span, or in our chain.
+          uint64_t parent_ts = 0;
+          if (!batch.empty() && batch.back().id == b.prev_id)
+            parent_ts = blocks[batch.size() - 1].timestamp;
+          else if (!sm64_parent_timestamp(b, parent_ts))
+            parent_ts = 0;
+          if (parent_ts && !pb.genesis_parent)
+            pb.gap = b.timestamp > parent_ts ? b.timestamp - parent_ts : 0;
+          batch.push_back(pb);
         }
         const uint64_t replayed = sm64coin::preverify(batch, std::max<unsigned>(1, tools::get_max_concurrency()));
         if (replayed)
@@ -6300,6 +6313,7 @@ void Blockchain::sm64_prereplay(const block& b)
     return;
   const crypto::hash id = get_block_hash(b);
   std::string why;
+  sm64coin::block_scope sm64_scope(block_to_blob(b), get_current_blockchain_height() ? get_current_blockchain_height() - 1 : 0);
   const int claim = sm64coin::note_claim(sm64_seed(b), b.sm64_proof, sm64_miner_nonce(b), b.sm64_sig, why);
   if (claim != 1 && claim != 2)
     return; // a bad signature, or a second run of a template (one run per key): not worth a replay
@@ -6330,6 +6344,50 @@ bool Blockchain::sm64_take_held(const crypto::hash& id, block& b, pool_supplemen
   extra = std::move(it->second.extra);
   m_sm64_held.erase(it);
   return true;
+}
+//------------------------------------------------------------------
+bool Blockchain::sm64_fork_choice(const std::list<block_extended_info>& alt_chain) const
+{
+  // SM64COIN v0.3: the longer chain, where a chain holding a block with equivocation evidence (that
+  // this node had while the block was at most 2 deep) weighs 1.5 blocks less. The facts; the decision
+  // is pow/sm64pow's (equivocation.rs fork_choice). Seeds of at most 64 blocks per side are looked at.
+  if (alt_chain.empty())
+    return false;
+  const uint64_t top = m_db->height() - 1, fork = alt_chain.front().height;
+  const uint64_t main_len = top >= fork ? top - fork + 1 : 0;
+  std::vector<crypto::hash> main_seeds, alt_seeds;
+  for (uint64_t h = fork; h <= top && main_seeds.size() < 64; ++h)
+  {
+    block m;
+    if (get_block_by_hash(m_db->get_block_hash_from_height(h), m))
+      main_seeds.push_back(sm64_seed(m));
+  }
+  for (const auto &a : alt_chain)
+    if (alt_seeds.size() < 64)
+      alt_seeds.push_back(sm64_seed(a.bl));
+  const bool r = sm64coin::fork_choice(main_len, main_seeds, alt_chain.size(), alt_seeds);
+  if (r != (alt_chain.size() > main_len))
+    MGINFO_YELLOW("Proof-of-play: fork choice with the equivocation penalty: " << (r ? "switching to" : "keeping ours against") << " an alternative chain of " << alt_chain.size() << " blocks (ours: " << main_len << " above the fork)");
+  return r;
+}
+//------------------------------------------------------------------
+void Blockchain::sm64_note_history()
+{
+  // SM64COIN v0.3, restart state: the claims (one run per key) and the displacement window are
+  // in memory. Rebuild them from the last blocks of our chain: each block's signed run is its
+  // template's claim, and the tip counts as eligible at its own stamp.
+  CRITICAL_REGION_LOCAL(m_blockchain_lock);
+  const uint64_t n = m_db->height();
+  for (uint64_t h = n > 8 ? n - 8 : 1; h < n; ++h)
+  {
+    block b;
+    if (!get_block_by_hash(m_db->get_block_hash_from_height(h), b))
+      continue;
+    std::string why;
+    sm64coin::block_scope scope(block_to_blob(b), n - 1);
+    sm64coin::note_claim(sm64_seed(b), b.sm64_proof, sm64_miner_nonce(b), b.sm64_sig, why);
+    sm64coin::note_history(get_block_hash(b), b.prev_id, sm64_seed(b), sm64coin::proof_frames(b.sm64_proof), b.timestamp);
+  }
 }
 //------------------------------------------------------------------
 bool Blockchain::sm64_displaces(const std::list<block_extended_info>& alt_chain) const

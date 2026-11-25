@@ -160,15 +160,50 @@ namespace sm64coin
   }
   bool queue_take_cleared(const crypto::hash &id) { return sm64pow_queue_take_cleared(u8(id)) == 1; }
 
-  int evidence_received(const std::string &evidence)
+  int evidence_received(const std::string &evidence, const std::string &host, uint64_t top)
   {
-    return sm64pow_evidence_received(u8(evidence), evidence.size());
+    return sm64pow_evidence_received(u8(evidence), evidence.size(), host.c_str(), top);
   }
+  size_t evidence_max() { return sm64pow_evidence_max(); }
+  bool evidence_for(const crypto::hash &seed, std::string &evidence)
+  {
+    evidence.assign(sm64pow_evidence_max(), '\0');
+    const size_t n = sm64pow_evidence_for(u8(seed), reinterpret_cast<uint8_t *>(&evidence[0]), evidence.size());
+    evidence.resize(n <= evidence.size() ? n : 0);
+    return !evidence.empty();
+  }
+  void evidence_recent(uint64_t top, std::vector<std::string> &out)
+  {
+    std::string e(sm64pow_evidence_max(), '\0');
+    for (size_t i = 0; i < 64; ++i)
+    {
+      const size_t n = sm64pow_evidence_recent(top, i, reinterpret_cast<uint8_t *>(&e[0]), e.size());
+      if (n == 0 || n > e.size())
+        break;
+      out.push_back(e.substr(0, n));
+    }
+  }
+  void evidence_persist(const std::string &path) { sm64pow_evidence_persist(path.c_str()); }
+  bool fork_choice(uint64_t main_len, const std::vector<crypto::hash> &main_seeds, uint64_t alt_len, const std::vector<crypto::hash> &alt_seeds)
+  {
+    std::string m, a;
+    for (const auto &h : main_seeds) m.append(h.data, 32);
+    for (const auto &h : alt_seeds) a.append(h.data, 32);
+    return sm64pow_fork_choice(main_len, u8(m), main_seeds.size(), alt_len, u8(a), alt_seeds.size()) == 1;
+  }
+  void note_history(const crypto::hash &id, const crypto::hash &parent, const crypto::hash &seed, uint32_t frames, uint64_t timestamp)
+  {
+    sm64pow_note_history(u8(id), u8(parent), u8(seed), frames, timestamp);
+  }
+  block_scope::block_scope(const std::string &blob, uint64_t top) : m_handle(sm64pow_block_scope_enter(u8(blob), blob.size(), top)) {}
+  block_scope::~block_scope() { sm64pow_block_scope_leave(m_handle); }
 
   bool take_evidence(std::string &evidence)
   {
-    evidence.assign(272, '\0');
-    return sm64pow_take_evidence(reinterpret_cast<uint8_t *>(&evidence[0]), evidence.size()) == 272;
+    evidence.assign(sm64pow_evidence_max(), '\0');
+    const size_t n = sm64pow_take_evidence(reinterpret_cast<uint8_t *>(&evidence[0]), evidence.size());
+    evidence.resize(n <= evidence.size() ? n : 0);
+    return !evidence.empty();
   }
 
   void note_eligible(const crypto::hash &id, const crypto::hash &parent, const crypto::hash &seed, uint32_t frames, uint64_t timestamp)
@@ -212,7 +247,7 @@ namespace sm64coin
       return 0;
     const size_t n = batch.size();
     std::vector<uint8_t> ids(32 * n), parents(32 * n, 0), seeds(32 * n);
-    std::vector<uint64_t> offsets(n + 1, 0);
+    std::vector<uint64_t> offsets(n + 1, 0), gaps(n, UINT64_MAX);
     std::string blobs;
     for (size_t i = 0; i < n; ++i)
     {
@@ -221,9 +256,10 @@ namespace sm64coin
         memcpy(&parents[32 * i], &batch[i].parent, 32);
       memcpy(&seeds[32 * i], &batch[i].seed, 32);
       blobs += *batch[i].proof;
+      gaps[i] = batch[i].gap;
       offsets[i + 1] = blobs.size();
     }
-    return sm64pow_preverify(n, ids.data(), parents.data(), seeds.data(), u8(blobs), offsets.data(), threads);
+    return sm64pow_preverify(n, ids.data(), parents.data(), seeds.data(), u8(blobs), offsets.data(), gaps.data(), threads);
   }
 
   bool block_progress(const crypto::hash &id, progress &p)

@@ -419,13 +419,13 @@ namespace cryptonote
   /************************************************************************/
   /*                                                                      */
   /************************************************************************/
-  struct NOTIFY_SM64_EVIDENCE // SM64COIN v0.3: two signed runs of one length for one template (pow/sm64pow/src/equivocation.rs)
+  struct NOTIFY_SM64_EVIDENCE // SM64COIN v0.3: two different signed runs for one template (pow/sm64pow/src/equivocation.rs)
   {
     const static int ID = BC_COMMANDS_POOL_BASE + 12;
 
     struct request_t
     {
-      std::string evidence; // 272 bytes, Evidence::encode
+      std::string evidence; // Evidence::encode (272 bytes) followed by the accused template (template.rs encode): self-contained
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE(evidence)

@@ -59,8 +59,26 @@ namespace sm64coin
   sibling judge_sibling(const crypto::hash &seed, const std::string &nonce, const std::string &main_proof, const crypto::signature &main_sig,
                         const std::string &alt_proof, const crypto::signature &alt_sig, std::string &evidence);
   // Evidence from a peer: true when new and valid (relay it).
-  // 1 new and valid (relay it), 0 not, -1 forged or malformed (drop the peer).
-  int evidence_received(const std::string &evidence);
+  // Self-contained evidence from peer `host` (our top block at `top`): 1 new and valid (relay it), 0 not, -1 forged or malformed (drop the peer).
+  int evidence_received(const std::string &evidence, const std::string &host, uint64_t top);
+  size_t evidence_max();
+  bool evidence_for(const crypto::hash &seed, std::string &evidence); // to send along with the accused block
+  void evidence_recent(uint64_t top, std::vector<std::string> &out); // for a newly connected peer
+  void evidence_persist(const std::string &path);
+  // Fork choice with the equivocation penalty (equivocation.rs): the two chains above the fork point. True: switch.
+  bool fork_choice(uint64_t main_len, const std::vector<crypto::hash> &main_seeds, uint64_t alt_len, const std::vector<crypto::hash> &alt_seeds);
+  void note_history(const crypto::hash &id, const crypto::hash &parent, const crypto::hash &seed, uint32_t frames, uint64_t timestamp);
+  // While alive: the block this thread handles, so evidence formed about its template carries it (relayable).
+  class block_scope
+  {
+  public:
+    block_scope(const std::string &blob, uint64_t top);
+    ~block_scope();
+    block_scope(const block_scope &) = delete;
+    block_scope &operator=(const block_scope &) = delete;
+  private:
+    void *m_handle;
+  };
   // The next new evidence to relay (NOTIFY_SM64_EVIDENCE); false: none.
   bool take_evidence(std::string &evidence);
   // Publish-on-find (pof.rs): `id` became eligible now; whether eligible
@@ -104,7 +122,7 @@ namespace sm64coin
   // The parallel pre-pass of a sync batch, in chain order (chain::preverify):
   // replays the batch's proofs chain by chain on `threads` threads, so the
   // sequential check finds each run. Validity is still decided there.
-  struct preverify_block { crypto::hash id; crypto::hash parent; bool genesis_parent; crypto::hash seed; const std::string *proof; };
+  struct preverify_block { crypto::hash id; crypto::hash parent; bool genesis_parent; crypto::hash seed; const std::string *proof; uint64_t gap = UINT64_MAX; }; // gap: timestamp gap to the parent (UINT64_MAX unknown)
   uint64_t preverify(const std::vector<preverify_block> &batch, unsigned threads);
   struct progress { uint32_t stars = 0, keys = 0; bool grand_star = false, ends_cycle = false; };
   // A cached block's end progress. False if not cached.

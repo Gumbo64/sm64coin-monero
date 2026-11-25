@@ -388,6 +388,8 @@ namespace cryptonote
     // at `height` that cannot matter yet: the admission policy (pow/sm64pow/src/admit.rs, docs/DOS.md).
     bool sm64_skip_alt(const block& b, const crypto::hash& id, uint64_t height) const;
     bool sm64_displaces(const std::list<block_extended_info>& alt_chain) const; // SM64COIN v0.3
+    bool sm64_fork_choice(const std::list<block_extended_info>& alt_chain) const; // SM64COIN v0.3: longer chain, with the equivocation penalty
+    void sm64_note_history(); // SM64COIN v0.3: rebuild the claims and the window from the last blocks (at startup)
     // When block `id` is held, the unix time it is due (0: not held).
     uint64_t sm64_held_until(const crypto::hash& id) const;
 
