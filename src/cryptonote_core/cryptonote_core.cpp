@@ -1373,6 +1373,9 @@ namespace cryptonote
       m_miner.resume();
       return false;
     }
+    // SM64COIN: this node's own block is replayed here, before prepare_handle_incoming_blocks takes
+    // the txpool lock and opens a DB batch (and outside the blockchain lock).
+    m_blockchain_storage.sm64_prereplay(b);
     std::vector<block> pblocks;
     if (!prepare_handle_incoming_blocks(blocks, pblocks))
     {
@@ -1380,7 +1383,6 @@ namespace cryptonote
       m_miner.resume();
       return false;
     }
-    m_blockchain_storage.sm64_prereplay(b); // SM64COIN: this node's own block is replayed here, outside the blockchain lock
     m_blockchain_storage.add_new_block(b, bvc);
     cleanup_handle_incoming_blocks(true);
     //anyway - update miner template
