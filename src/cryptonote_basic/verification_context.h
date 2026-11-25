@@ -71,5 +71,7 @@ namespace cryptonote
     bool m_partial_block_reward;
     bool m_bad_pow; // if bad pow, ban peer outright for DoS protection
     bool m_missing_txs; // set if, during verif, we don't have all the necessary txs available
+    bool m_sm64_held; // SM64COIN v0.3 publish-on-find: valid, held until eligible: relay it now
+    bool m_sm64_stale; // SM64COIN v0.3 freshness bound: stamped long before it arrived: don't relay
   };
 }

@@ -1350,7 +1350,7 @@ namespace cryptonote
 
 
     CHECK_AND_ASSERT_MES(!bvc.m_verifivation_failed, false, "mined block failed verification");
-    if(bvc.m_added_to_main_chain)
+    if((bvc.m_added_to_main_chain && !bvc.m_sm64_stale) || bvc.m_sm64_held) // SM64COIN v0.3: publish-on-find relays held runs; stale blocks are not relayed
     {
       cryptonote_connection_context exclude_context = {};
       NOTIFY_NEW_FLUFFY_BLOCK::request arg{};
@@ -1677,6 +1677,12 @@ namespace cryptonote
 
     sm64_release_held(); // SM64COIN: held blocks whose run now fits by our clock
     sm64_board_tick(); // SM64COIN: the leaderboard
+    {
+      // SM64COIN v0.3: relay new equivocation evidence (pow/sm64pow/src/equivocation.rs).
+      NOTIFY_SM64_EVIDENCE::request ev;
+      while (sm64coin::take_evidence(ev.evidence))
+        get_protocol()->relay_sm64_evidence(ev, boost::uuids::nil_uuid());
+    }
     relay_txpool_transactions(); // txpool handles periodic DB checking
     m_check_updates_interval.do_call(boost::bind(&core::check_updates, this));
     m_check_disk_space_interval.do_call(boost::bind(&core::check_disk_space, this));

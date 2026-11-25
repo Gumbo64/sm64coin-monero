@@ -721,7 +721,7 @@ namespace cryptonote
         return LEVIN_ERROR_CONNECTION;
       }
     }
-    else if( bvc.m_added_to_main_chain )
+    else if( (bvc.m_added_to_main_chain && !bvc.m_sm64_stale) || bvc.m_sm64_held ) // SM64COIN v0.3: publish-on-find relays held runs; stale blocks are not relayed
     {
       arg.current_blockchain_height = new_block_height + 1;
       // Relay an empty block
@@ -2681,6 +2681,41 @@ skip:
       epee::levin::message_writer blob{16 * 1024};
       epee::serialization::store_t_to_binary(arg, blob.buffer);
       m_p2p->relay_notify_to_list(NOTIFY_SM64_BOARD::ID, std::move(blob), std::move(conns));
+    }
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------
+  template<class t_core>
+  int t_cryptonote_protocol_handler<t_core>::handle_notify_sm64_evidence(int command, NOTIFY_SM64_EVIDENCE::request& arg, cryptonote_connection_context& context)
+  {
+    // SM64COIN v0.3: equivocation evidence from a peer. pow/sm64pow verifies
+    // it (two signatures) and queues it for relay if it is new; the core
+    // relays the queue on idle (core::on_idle -> sm64coin::take_evidence).
+    if (arg.evidence.size() != 272)
+    {
+      LOG_DEBUG_CC(context, "SM64 evidence: " << arg.evidence.size() << " bytes, dropped");
+      return 1;
+    }
+    if (sm64coin::evidence_received(arg.evidence))
+      MWARNING("Proof-of-play: equivocation evidence from " << context.m_remote_address.str());
+    return 1;
+  }
+  //------------------------------------------------------------------------------------------------------------------------
+  template<class t_core>
+  bool t_cryptonote_protocol_handler<t_core>::relay_sm64_evidence(NOTIFY_SM64_EVIDENCE::request& arg, const boost::uuids::uuid& source)
+  {
+    std::vector<std::pair<epee::net_utils::zone, boost::uuids::uuid>> conns;
+    m_p2p->for_each_connection([&](connection_context& context, nodetool::peerid_type peer_id, uint32_t support_flags)
+    {
+      if (peer_id && context.m_connection_id != source && context.m_remote_address.get_zone() == epee::net_utils::zone::public_)
+        conns.push_back({context.m_remote_address.get_zone(), context.m_connection_id});
+      return true;
+    });
+    if (!conns.empty())
+    {
+      epee::levin::message_writer blob{1024};
+      epee::serialization::store_t_to_binary(arg, blob.buffer);
+      m_p2p->relay_notify_to_list(NOTIFY_SM64_EVIDENCE::ID, std::move(blob), std::move(conns));
     }
     return true;
   }

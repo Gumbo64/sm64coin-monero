@@ -1998,9 +1998,38 @@ namespace cryptonote
         return false;
       }
     }
+    // SM64COIN v0.3: don't build on an equivocated childless tip (equivocation.rs):
+    // build on a clean sibling, or on the tip's parent (a sibling of our own).
+    bool sm64_redirect = false;
+    if (req.prev_block.empty())
+    {
+      const Blockchain &bc = m_core.get_blockchain_storage();
+      uint64_t tip_height = 0;
+      const crypto::hash tip = bc.get_tail_id(tip_height);
+      block tb;
+      if (tip_height > 0 && bc.get_block_by_hash(tip, tb))
+      {
+        std::vector<block> alts, siblings;
+        bc.get_alternative_blocks(alts);
+        std::vector<crypto::hash> seeds;
+        for (const block &a : alts)
+          if (cryptonote::get_block_height(a) == tip_height)
+          {
+            siblings.push_back(a);
+            seeds.push_back(Blockchain::sm64_seed(a));
+          }
+        const int64_t c = sm64coin::choose_parent(Blockchain::sm64_seed(tb), seeds);
+        if (c >= 0)
+        {
+          prev_block = (size_t)c < siblings.size() ? cryptonote::get_block_hash(siblings[c]) : tb.prev_id;
+          sm64_redirect = true;
+          MWARNING("Proof-of-play: the tip " << tip << " is equivocated; this template builds on " << prev_block);
+        }
+      }
+    }
     crypto::hash seed_hash, next_seed_hash;
     const bool include_sensitive = !m_restricted || !ctx;
-    if (!get_block_template(info.address, req.prev_block.empty() ? NULL : &prev_block, blob_reserve, reserved_offset, wdiff, res.height, res.expected_reward, b, res.seed_height, seed_hash, next_seed_hash, error_resp, include_sensitive))
+    if (!get_block_template(info.address, req.prev_block.empty() && !sm64_redirect ? NULL : &prev_block, blob_reserve, reserved_offset, wdiff, res.height, res.expected_reward, b, res.seed_height, seed_hash, next_seed_hash, error_resp, include_sensitive))
       return false;
     if (b.major_version >= RX_BLOCK_VERSION)
     {

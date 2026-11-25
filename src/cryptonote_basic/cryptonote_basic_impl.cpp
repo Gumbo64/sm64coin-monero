@@ -85,7 +85,14 @@ namespace cryptonote {
     static_assert(DIFFICULTY_TARGET_V2%60==0&&DIFFICULTY_TARGET_V1%60==0,"difficulty targets must be a multiple of 60");
     const int target = version < 2 ? DIFFICULTY_TARGET_V1 : DIFFICULTY_TARGET_V2;
     const int target_minutes = target / 60;
-    const int emission_speed_factor = EMISSION_SPEED_FACTOR_PER_MINUTE - (target_minutes-1);
+    // SM64COIN v0.3: Monero's factor (20 - (minutes - 1)) doubles the reward per
+    // block for every extra minute, so it is not "per minute" beyond 1-2 min
+    // blocks: at 20 min it would be 1 (half the supply in one block). Keep v0.2's
+    // emission per day instead: 5-min blocks at factor 16 = 288 blocks/day x R/2^16;
+    // 20-min blocks: 72 blocks/day x R/2^14, the same. The tail emission stays per minute.
+    static_assert(DIFFICULTY_TARGET_V2 == 1200 && DIFFICULTY_TARGET_V1 == 1200, "SM64COIN: re-derive emission_speed_factor for another target");
+    const int emission_speed_factor = 14;
+    (void)EMISSION_SPEED_FACTOR_PER_MINUTE;
 
     uint64_t base_reward = (MONEY_SUPPLY - already_generated_coins) >> emission_speed_factor;
     if (base_reward < FINAL_SUBSIDY_PER_MINUTE*target_minutes)

@@ -582,8 +582,8 @@ namespace cryptonote
 
   public:
     block(): block_header(), hash_valid(false) {}
-    block(const block &b): block_header(b), hash_valid(false), miner_tx(b.miner_tx), tx_hashes(b.tx_hashes), sm64_proof(b.sm64_proof) { if (b.is_hash_valid()) { hash = b.hash; set_hash_valid(true); } }
-    block &operator=(const block &b) { block_header::operator=(b); hash_valid = false; miner_tx = b.miner_tx; tx_hashes = b.tx_hashes; sm64_proof = b.sm64_proof; if (b.is_hash_valid()) { hash = b.hash; set_hash_valid(true); } return *this; }
+    block(const block &b): block_header(b), hash_valid(false), miner_tx(b.miner_tx), tx_hashes(b.tx_hashes), sm64_proof(b.sm64_proof), sm64_sig(b.sm64_sig) { if (b.is_hash_valid()) { hash = b.hash; set_hash_valid(true); } }
+    block &operator=(const block &b) { block_header::operator=(b); hash_valid = false; miner_tx = b.miner_tx; tx_hashes = b.tx_hashes; sm64_proof = b.sm64_proof; sm64_sig = b.sm64_sig; if (b.is_hash_valid()) { hash = b.hash; set_hash_valid(true); } return *this; }
     void invalidate_hashes() { set_hash_valid(false); }
     bool is_hash_valid() const { return hash_valid.load(std::memory_order_acquire); }
     void set_hash_valid(bool v) const { hash_valid.store(v,std::memory_order_release); }
@@ -594,6 +594,10 @@ namespace cryptonote
     // SM64COIN: the proof-of-play (an encoded run of controller inputs, see
     // pow/sm64pow/src/proof.rs). Opaque here; the last field of the blob.
     std::string sm64_proof;
+    // SM64COIN v0.3: the miner's signature over (seed, proof_id, frames) with the
+    // key the coinbase extra nonce commits (pow/sm64pow/src/sign.rs). All zero in
+    // the genesis block and in templates. In the block id (get_block_id_blob).
+    crypto::signature sm64_sig = {};
 
     // hash cash
     mutable crypto::hash hash;
@@ -610,6 +614,7 @@ namespace cryptonote
       FIELD(sm64_proof) // SM64COIN
       if (sm64_proof.size() > SM64COIN_MAX_PROOF_BYTES)
         return false;
+      FIELD(sm64_sig) // SM64COIN v0.3
     END_SERIALIZE()
   };
 

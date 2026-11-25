@@ -320,6 +320,7 @@ void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::b
   INSERT_INTO_JSON_OBJECT(dest, miner_tx, b.miner_tx);
   INSERT_INTO_JSON_OBJECT(dest, tx_hashes, b.tx_hashes);
   INSERT_INTO_JSON_OBJECT(dest, sm64_proof, epee::string_tools::buff_to_hex_nodelimer(b.sm64_proof)); // SM64COIN
+  INSERT_INTO_JSON_OBJECT(dest, sm64_sig, b.sm64_sig); // SM64COIN v0.3
 
   dest.EndObject();
 }
@@ -343,6 +344,7 @@ void fromJsonValue(const rapidjson::Value& val, cryptonote::block& b)
   GET_FROM_JSON_OBJECT(val, proof_hex, sm64_proof);
   if (!epee::string_tools::parse_hexstr_to_binbuff(proof_hex, b.sm64_proof))
     throw WRONG_TYPE("hex sm64_proof");
+  GET_FROM_JSON_OBJECT(val, b.sm64_sig, sm64_sig); // SM64COIN v0.3
 }
 
 void toJsonValue(rapidjson::Writer<epee::byte_stream>& dest, const cryptonote::txin_v& txin)

@@ -343,7 +343,7 @@ namespace cryptonote
     bool sm64_check_timestamp(const block& b) const;
     uint64_t sm64_parent_timestamp(const block& b) const; // 0 if unknown
     difficulty_type sm64_effective_difficulty(const block& b, const difficulty_type& retarget) const;
-    bool sm64_check_proof(const block& b, const difficulty_type& difficulty) const;
+    bool sm64_check_proof(const block& b, const difficulty_type& difficulty, bool eligible = true) const; // SM64COIN v0.3: eligible = processed now (publish-on-find)
     // The block's parent for the chain rules: whether it is the genesis block, and the timestamp gap.
     bool sm64_parent_ref(const block& b, bool& genesis_parent, uint64_t& gap) const;
     // Makes block `h`'s end state available (replays its ancestors back to the cycle start as needed).
@@ -351,6 +351,9 @@ namespace cryptonote
     // The perturbation seed of a block: cn_fast_hash of its hashing blob with the
     // timestamp zeroed (so time passing never changes a block's pokes).
     static crypto::hash sm64_seed(const block& b);
+    // SM64COIN v0.3: the coinbase's (first) extra nonce, which commits the miner key; and the block's signature check (no replay).
+    static std::string sm64_miner_nonce(const block& b);
+    static bool sm64_check_signature(const block& b, std::string& why);
     // Every frame's played pad (4 bytes each) of an accepted block's run.
     bool sm64_played(const block& b, std::string& pads, bool wanted = false) const; // SM64COIN: wanted = the proof's inputs (codec-free)
     // The blocks of the cycle up to and including `tip`, oldest first (the first one started from power-on).
@@ -362,10 +365,11 @@ namespace cryptonote
     // rejected, its peer not punished) until it does, so stamping ahead wins
     // nothing here. True: held. One block per seed (restamped copies of a run
     // share it), at most 64.
-    bool sm64_hold(const block& b, const crypto::hash& id, const pool_supplement& extra);
+    bool sm64_hold(const block& b, const crypto::hash& id, const pool_supplement& extra, bool* held = nullptr); // SM64COIN v0.3: *held = valid and held: relay it now
     // SM64COIN: whether to skip (not replay, not store) an alternative block
     // at `height` that cannot matter yet: the admission policy (pow/sm64pow/src/admit.rs, docs/DOS.md).
     bool sm64_skip_alt(const block& b, const crypto::hash& id, uint64_t height) const;
+    bool sm64_displaces(const std::list<block_extended_info>& alt_chain) const; // SM64COIN v0.3
     // Removes and returns the held blocks whose time has come.
     void sm64_take_due(std::vector<std::pair<block, pool_supplement>>& due);
     // When block `id` is held, the unix time it is due (0: not held).

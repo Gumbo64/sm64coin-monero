@@ -1476,12 +1476,13 @@ namespace cryptonote
     return blob;
   }
   //---------------------------------------------------------------
-  // SM64COIN: hashing blob (what the proof's RNG seed comes from) + proof id.
+  // SM64COIN: hashing blob (what the proof's RNG seed comes from) + proof id + signature (v0.3).
   blobdata get_block_id_blob(const block& b)
   {
     blobdata blob = get_block_hashing_blob(b);
     const crypto::hash pid = sm64coin::proof_id(b.sm64_proof);
     blob.append(reinterpret_cast<const char*>(&pid), sizeof(pid));
+    blob.append(reinterpret_cast<const char*>(&b.sm64_sig), sizeof(b.sm64_sig)); // SM64COIN v0.3: and the miner's signature
     return blob;
   }
   //---------------------------------------------------------------

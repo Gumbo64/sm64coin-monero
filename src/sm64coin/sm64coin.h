@@ -12,6 +12,7 @@
 #include <vector>
 #include <boost/multiprecision/cpp_int.hpp>
 #include "crypto/hash.h"
+#include "crypto/crypto.h" // SM64COIN v0.3: crypto::signature
 
 namespace sm64coin
 {
@@ -39,6 +40,33 @@ namespace sm64coin
   // parent first), -1 internal error. Caches the end state when valid.
   int64_t verify_block(const crypto::hash &id, const crypto::hash *parent, uint64_t gap, const crypto::hash &seed,
                        const difficulty_type &difficulty, const std::string &proof, std::string &why);
+  // SM64COIN v0.3, signed proofs (pow/sm64pow/src/sign.rs): `nonce` is the
+  // coinbase's extra nonce (it must commit the miner key: 0x64 || key), `sig`
+  // the block's sm64_sig. verify_signed_block checks the signature before any
+  // replay (then as verify_block; difficulty 0 skips the signature).
+  int64_t verify_signed_block(const crypto::hash &id, const crypto::hash *parent, uint64_t gap, const crypto::hash &seed,
+                              const difficulty_type &difficulty, const std::string &proof, const std::string &nonce,
+                              const crypto::signature &sig, std::string &why);
+  bool check_signature(const crypto::hash &seed, const std::string &proof, const std::string &nonce, const crypto::signature &sig, std::string &why);
+  // Equivocation (equivocation.rs, relay policy): a second run (alt_proof,
+  // alt_sig) for the template of our accepted block (main_proof, main_sig).
+  enum sibling { sibling_same = 0, sibling_shorter = 1, sibling_longer = 2, sibling_bad_sig = 3, sibling_equivocation = 4, sibling_known_evidence = 5, sibling_error = -1 };
+  sibling judge_sibling(const crypto::hash &seed, const std::string &nonce, const std::string &main_proof, const crypto::signature &main_sig,
+                        const std::string &alt_proof, const crypto::signature &alt_sig, std::string &evidence);
+  // Evidence from a peer: true when new and valid (relay it).
+  bool evidence_received(const std::string &evidence);
+  // The next new evidence to relay (NOTIFY_SM64_EVIDENCE); false: none.
+  bool take_evidence(std::string &evidence);
+  // Publish-on-find (pof.rs): `id` became eligible now; whether eligible
+  // sibling `alt` replaces our childless `tip`; whether a sibling claiming
+  // `frames` stamped `timestamp` could (worth a replay); the freshness bound.
+  void note_eligible(const crypto::hash &id, const crypto::hash &parent, const crypto::hash &seed, uint32_t frames, uint64_t timestamp);
+  bool displaces(const crypto::hash &tip, const crypto::hash &alt);
+  bool pof_candidate(const crypto::hash &tip, uint32_t frames, uint64_t timestamp);
+  bool stale(uint64_t timestamp);
+  // Where to build when the childless tip has seed `tip_seed`: -1 the tip,
+  // i < siblings.size() the i-th block at its height, siblings.size() its parent.
+  int64_t choose_parent(const crypto::hash &tip_seed, const std::vector<crypto::hash> &sibling_seeds);
   bool has_state(const crypto::hash &id);
   // Block `id`'s cached end state (the game's save state), gzip; false unless cached.
   bool end_state_gz(const crypto::hash &id, std::string &out);

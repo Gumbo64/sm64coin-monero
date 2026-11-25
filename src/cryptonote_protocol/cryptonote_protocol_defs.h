@@ -416,4 +416,22 @@ namespace cryptonote
     typedef epee::misc_utils::struct_init<request_t> request;
   };
 
+  /************************************************************************/
+  /*                                                                      */
+  /************************************************************************/
+  struct NOTIFY_SM64_EVIDENCE // SM64COIN v0.3: two signed runs of one length for one template (pow/sm64pow/src/equivocation.rs)
+  {
+    const static int ID = BC_COMMANDS_POOL_BASE + 12;
+
+    struct request_t
+    {
+      std::string evidence; // 272 bytes, Evidence::encode
+
+      BEGIN_KV_SERIALIZE_MAP()
+        KV_SERIALIZE(evidence)
+      END_KV_SERIALIZE_MAP()
+    };
+    typedef epee::misc_utils::struct_init<request_t> request;
+  };
+
 }

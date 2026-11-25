@@ -75,6 +75,71 @@ namespace sm64coin
     return r;
   }
 
+  static const uint8_t *sig8(const crypto::signature &s) { return reinterpret_cast<const uint8_t *>(&s); }
+
+  int64_t verify_signed_block(const crypto::hash &id, const crypto::hash *parent, uint64_t gap, const crypto::hash &seed,
+                              const difficulty_type &difficulty, const std::string &proof, const std::string &nonce,
+                              const crypto::signature &sig, std::string &why)
+  {
+    if (!s_initialized)
+    {
+      why = "proof-of-play is not initialized (no SM64 ROM loaded)";
+      return -1;
+    }
+    const uint64_t d = difficulty == 0 ? 0 : clamp64(difficulty);
+    int64_t r = sm64pow_verify_signed_block(u8(id), parent ? u8(*parent) : nullptr, gap, u8(seed), d, u8(proof), proof.size(),
+                                            u8(nonce), nonce.size(), sig8(sig));
+    if (r <= 0)
+      why = last_error();
+    return r;
+  }
+
+  bool check_signature(const crypto::hash &seed, const std::string &proof, const std::string &nonce, const crypto::signature &sig, std::string &why)
+  {
+    if (sm64pow_check_signature(u8(seed), u8(proof), proof.size(), u8(nonce), nonce.size(), sig8(sig)) == 1)
+      return true;
+    why = last_error();
+    return false;
+  }
+
+  sibling judge_sibling(const crypto::hash &seed, const std::string &nonce, const std::string &main_proof, const crypto::signature &main_sig,
+                        const std::string &alt_proof, const crypto::signature &alt_sig, std::string &evidence)
+  {
+    std::string out(512, '\0');
+    const int32_t r = sm64pow_judge_sibling(u8(seed), u8(nonce), nonce.size(), u8(main_proof), main_proof.size(), sig8(main_sig),
+                                            u8(alt_proof), alt_proof.size(), sig8(alt_sig), reinterpret_cast<uint8_t *>(&out[0]), out.size());
+    if (r == sibling_equivocation || r == sibling_known_evidence)
+      evidence = out.substr(0, 272);
+    return static_cast<sibling>(r);
+  }
+
+  bool evidence_received(const std::string &evidence)
+  {
+    return sm64pow_evidence_received(u8(evidence), evidence.size()) == 1;
+  }
+
+  bool take_evidence(std::string &evidence)
+  {
+    evidence.assign(272, '\0');
+    return sm64pow_take_evidence(reinterpret_cast<uint8_t *>(&evidence[0]), evidence.size()) == 272;
+  }
+
+  void note_eligible(const crypto::hash &id, const crypto::hash &parent, const crypto::hash &seed, uint32_t frames, uint64_t timestamp)
+  {
+    sm64pow_note_eligible(u8(id), u8(parent), u8(seed), frames, timestamp);
+  }
+  bool displaces(const crypto::hash &tip, const crypto::hash &alt) { return sm64pow_displaces(u8(tip), u8(alt)) == 1; }
+  bool pof_candidate(const crypto::hash &tip, uint32_t frames, uint64_t timestamp) { return sm64pow_pof_candidate(u8(tip), frames, timestamp) == 1; }
+  bool stale(uint64_t timestamp) { return sm64pow_stale(timestamp) == 1; }
+
+  int64_t choose_parent(const crypto::hash &tip_seed, const std::vector<crypto::hash> &sibling_seeds)
+  {
+    std::string s;
+    for (const auto &h : sibling_seeds)
+      s.append(h.data, 32);
+    return sm64pow_choose_parent(u8(tip_seed), u8(s), sibling_seeds.size());
+  }
+
   bool has_state(const crypto::hash &id) { return sm64pow_has_state(u8(id)) == 1; }
 
   bool end_state_gz(const crypto::hash &id, std::string &out)

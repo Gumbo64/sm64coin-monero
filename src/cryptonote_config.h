@@ -78,8 +78,8 @@
 #define ORPHANED_BLOCKS_MAX_COUNT                       100
 
 
-#define DIFFICULTY_TARGET_V2                            300  // seconds. SM64COIN: was 120; must equal Rules::target_seconds()
-#define DIFFICULTY_TARGET_V1                            300  // seconds. SM64COIN: was 60
+#define DIFFICULTY_TARGET_V2                            1200 // seconds. SM64COIN v0.3: 20 min (v0.2: 300; Monero: 120); must equal Rules::target_seconds()
+#define DIFFICULTY_TARGET_V1                            1200 // seconds. SM64COIN v0.3: 20 min (v0.2: 300; Monero: 60)
 #define DIFFICULTY_WINDOW                               60 // blocks. SM64COIN: was 720; the retarget itself is Rules::next_difficulty()
 #define DIFFICULTY_LAG                                  0  // SM64COIN: was 15
 #define DIFFICULTY_CUT                                  6  // timestamps to cut after sorting. SM64COIN: was 60
@@ -233,11 +233,11 @@ namespace config
   uint16_t const RPC_DEFAULT_PORT = 16481;
   uint16_t const ZMQ_RPC_DEFAULT_PORT = 16482;
   boost::uuids::uuid const NETWORK_ID = { {
-      0xB8, 0x82, 0xEC, 0xCA, 0x48, 0x41, 0x57, 0x0F, 0x80, 0xE3, 0x21, 0x6B, 0x8C, 0x43, 0xC3, 0xE8
-    } }; // SM64COIN: uuid5(dns, "sm64coin-mainnet")
-  // SM64COIN: unlock 10, the full v1 reward at 5-minute blocks, paid to the RingCT H point (nobody knows its key: burned).
-  std::string const GENESIS_TX = "010a01ff0001ffffffffffff3f028b655970153799af2aeadc9ff1add0ea6c7251d54154cfa92c173a0dd39c1f9421017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
-  uint32_t const GENESIS_NONCE = 64064; // SM64COIN
+      0x54, 0xD3, 0x42, 0x18, 0x3F, 0x96, 0x54, 0xEF, 0xBF, 0x1F, 0xDD, 0x18, 0x6F, 0xEC, 0x24, 0x44
+    } }; // SM64COIN v0.3 (a new chain): uuid5(dns, "sm64coin-mainnet-v0.3"); v0.2 was uuid5(dns, "sm64coin-mainnet")
+  // SM64COIN: unlock 10, the full v1 reward (v0.3: at 20-minute blocks, emission factor 14), paid to the RingCT H point (nobody knows its key: burned).
+  std::string const GENESIS_TX = "010a01ff0001ffffffffffffff01028b655970153799af2aeadc9ff1add0ea6c7251d54154cfa92c173a0dd39c1f9421017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
+  uint32_t const GENESIS_NONCE = 64300; // SM64COIN v0.3: a new chain (v0.2: 64064)
 
   // Hash domain separators
   const char HASH_KEY_BULLETPROOF_EXPONENT[] = "bulletproof";
@@ -277,11 +277,11 @@ namespace config
     uint16_t const RPC_DEFAULT_PORT = 26481; // SM64COIN
     uint16_t const ZMQ_RPC_DEFAULT_PORT = 26482; // SM64COIN
     boost::uuids::uuid const NETWORK_ID = { {
-      0x17, 0x67, 0xCC, 0x76, 0xAE, 0x36, 0x5D, 0xF9, 0xAE, 0xF0, 0xD8, 0xFD, 0xAE, 0x81, 0xC2, 0x0F
-    } }; // SM64COIN: uuid5(dns, "sm64coin-testnet")
-    // SM64COIN: unlock 10, the full v1 reward at 5-minute blocks, paid to the RingCT H point (nobody knows its key: burned).
-  std::string const GENESIS_TX = "010a01ff0001ffffffffffff3f028b655970153799af2aeadc9ff1add0ea6c7251d54154cfa92c173a0dd39c1f9421017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
-    uint32_t const GENESIS_NONCE = 64065; // SM64COIN
+      0x0D, 0xF0, 0x00, 0xF8, 0x9B, 0xB3, 0x5A, 0x56, 0xBC, 0xF3, 0x48, 0x18, 0x3C, 0xE6, 0x5F, 0xEE
+    } }; // SM64COIN v0.3 (a new chain): uuid5(dns, "sm64coin-testnet-v0.3"); v0.2 was uuid5(dns, "sm64coin-testnet")
+    // SM64COIN: unlock 10, the full v1 reward (v0.3: at 20-minute blocks, emission factor 14), paid to the RingCT H point (nobody knows its key: burned).
+  std::string const GENESIS_TX = "010a01ff0001ffffffffffffff01028b655970153799af2aeadc9ff1add0ea6c7251d54154cfa92c173a0dd39c1f9421017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
+    uint32_t const GENESIS_NONCE = 64301; // SM64COIN v0.3 (v0.2: 64065)
   }
 
   namespace stagenet
@@ -293,11 +293,11 @@ namespace config
     uint16_t const RPC_DEFAULT_PORT = 36481; // SM64COIN
     uint16_t const ZMQ_RPC_DEFAULT_PORT = 36482; // SM64COIN
     boost::uuids::uuid const NETWORK_ID = { {
-      0x44, 0xF1, 0xAB, 0x57, 0x35, 0x75, 0x57, 0x97, 0x90, 0xF9, 0x93, 0xE4, 0xA4, 0x64, 0x33, 0x32
-    } }; // SM64COIN: uuid5(dns, "sm64coin-stagenet")
-    // SM64COIN: unlock 10, the full v1 reward at 5-minute blocks, paid to the RingCT H point (nobody knows its key: burned).
-  std::string const GENESIS_TX = "010a01ff0001ffffffffffff3f028b655970153799af2aeadc9ff1add0ea6c7251d54154cfa92c173a0dd39c1f9421017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
-    uint32_t const GENESIS_NONCE = 64066; // SM64COIN
+      0x0E, 0x28, 0x5D, 0xA1, 0x6C, 0xCD, 0x57, 0xB6, 0xAF, 0x2C, 0xBD, 0xEE, 0x94, 0xDB, 0xDF, 0xBE
+    } }; // SM64COIN v0.3 (a new chain): uuid5(dns, "sm64coin-stagenet-v0.3"); v0.2 was uuid5(dns, "sm64coin-stagenet")
+    // SM64COIN: unlock 10, the full v1 reward (v0.3: at 20-minute blocks, emission factor 14), paid to the RingCT H point (nobody knows its key: burned).
+  std::string const GENESIS_TX = "010a01ff0001ffffffffffffff01028b655970153799af2aeadc9ff1add0ea6c7251d54154cfa92c173a0dd39c1f9421017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
+    uint32_t const GENESIS_NONCE = 64302; // SM64COIN v0.3 (v0.2: 64066)
   }
 }
 
