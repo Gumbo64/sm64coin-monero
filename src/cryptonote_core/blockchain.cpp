@@ -6254,8 +6254,9 @@ void Blockchain::sm64_prereplay(const block& b)
     return;
   const crypto::hash id = get_block_hash(b);
   std::string why;
-  if (!sm64_check_signature(b, why))
-    return;
+  const int claim = sm64coin::note_claim(sm64_seed(b), b.sm64_proof, sm64_miner_nonce(b), b.sm64_sig, why);
+  if (claim != 1 && claim != 2)
+    return; // a bad signature, or a second run of a template (one run per key): not worth a replay
   sm64coin::queue_job j;
   {
     CRITICAL_REGION_LOCAL(m_blockchain_lock);
