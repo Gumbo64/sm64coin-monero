@@ -5915,13 +5915,8 @@ bool Blockchain::sm64_check_timestamp(const block& b) const
     MERROR_VER("Timestamp of block with id: " << get_block_hash(b) << ", " << b.timestamp << ", is not after its parent's");
     return false;
   }
-  // A fork from the genesis block (timestamp 0) must not declare time it never spent.
-  // SM64COIN v0.3: mainnet only, so test networks (--testnet, --stagenet) can run before the launch.
-  if (m_nettype == MAINNET && b.timestamp < sm64coin::launch_timestamp())
-  {
-    MERROR_VER("Timestamp of block with id: " << get_block_hash(b) << ", " << b.timestamp << ", predates the chain's launch " << sm64coin::launch_timestamp());
-    return false;
-  }
+  // SM64COIN v0.4: no launch-time floor (v0.3 refused mainnet blocks stamped before its launch);
+  // the network id and the genesis block separate the chain.
   return true;
 }
 //------------------------------------------------------------------
