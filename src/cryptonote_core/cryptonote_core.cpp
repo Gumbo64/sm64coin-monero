@@ -1668,9 +1668,9 @@ namespace cryptonote
     pool_supplement extra;
     if (!m_blockchain_storage.sm64_take_held(id, b, extra))
       return;
-    if (verdict == 0 || verdict == 2)
+    if (verdict == 0 || verdict == 2 || verdict == 4) // SM64COIN v0.4: 4 = a bad encoding (drop this copy, not the block id)
     {
-      MINFO("Proof-of-play: queued block " << id << (verdict == 0 ? " is invalid: " : " dropped without a replay: ") << why);
+      MINFO("Proof-of-play: queued block " << id << (verdict == 0 ? " is invalid: " : verdict == 4 ? " arrived in a bad encoding: " : " dropped without a replay: ") << why);
       return;
     }
     block_verification_context bvc{};

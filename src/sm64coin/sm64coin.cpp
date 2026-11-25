@@ -1,6 +1,7 @@
 // SM64COIN: see sm64coin.h.
 #include "sm64coin.h"
 #include "sm64pow.h"
+#include "cryptonote_config.h" // SM64COIN v0.4: SM64COIN_V04_FEATURES
 #include <atomic>
 #include <limits>
 
@@ -25,6 +26,12 @@ namespace sm64coin
   bool init(const std::string &rom_path, std::string &error)
   {
     if (sm64pow_init(rom_path.empty() ? nullptr : rom_path.c_str()) != 1)
+    {
+      error = last_error();
+      return false;
+    }
+    // SM64COIN v0.4: the consensus features of this build (features.rs; SM64COIN_V04_FEATURES).
+    if (sm64pow_set_features(SM64COIN_V04_FEATURES) != 0)
     {
       error = last_error();
       return false;

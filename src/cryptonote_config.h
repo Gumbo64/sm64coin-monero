@@ -47,6 +47,9 @@
 #define CURRENT_BLOCK_MINOR_VERSION                     0
 #define CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT              60*2 // SM64COIN: was 2 h; difficulty decays with timestamp age
 #define SM64COIN_MAX_PROOF_BYTES                        (256 * 1024) // SM64COIN: cap on block::sm64_proof (36000 raw frames = 144 kB)
+// SM64COIN v0.4: the consensus features this build runs (pow/sm64pow/src/features.rs bits: 1 committed
+// inputs, 2 included proofs, 4 proof weight, 8 proof rewards). Stage A: committed inputs only.
+#define SM64COIN_V04_FEATURES 1
 #define CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE             3 // SM64COIN v0.3: was 10; 3 blocks = 1 h at 20-minute blocks
 
 #define BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW               60
@@ -233,11 +236,11 @@ namespace config
   uint16_t const RPC_DEFAULT_PORT = 16481;
   uint16_t const ZMQ_RPC_DEFAULT_PORT = 16482;
   boost::uuids::uuid const NETWORK_ID = { {
-      0x54, 0xD3, 0x42, 0x18, 0x3F, 0x96, 0x54, 0xEF, 0xBF, 0x1F, 0xDD, 0x18, 0x6F, 0xEC, 0x24, 0x44
-    } }; // SM64COIN v0.3 (a new chain): uuid5(dns, "sm64coin-mainnet-v0.3"); v0.2 was uuid5(dns, "sm64coin-mainnet")
+      0x5A, 0x3D, 0xCA, 0xBF, 0xAE, 0x70, 0x5A, 0x64, 0xBD, 0x78, 0x57, 0x90, 0xFD, 0x55, 0x28, 0xC9
+    } }; // SM64COIN v0.4 (a new chain): uuid5(dns, "sm64coin-mainnet-v0.4"); v0.3 was uuid5(dns, "sm64coin-mainnet-v0.3"); v0.2 was uuid5(dns, "sm64coin-mainnet")
   // SM64COIN: unlock 10, the full v1 reward (v0.3: at 20-minute blocks, emission factor 14), paid to the RingCT H point (nobody knows its key: burned).
   std::string const GENESIS_TX = "010a01ff0001ffffffffffffff01028b655970153799af2aeadc9ff1add0ea6c7251d54154cfa92c173a0dd39c1f9421017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
-  uint32_t const GENESIS_NONCE = 64300; // SM64COIN v0.3: a new chain (v0.2: 64064)
+  uint32_t const GENESIS_NONCE = 64400; // SM64COIN v0.4: a new chain (v0.3: 64300, v0.2: 64064)
 
   // Hash domain separators
   const char HASH_KEY_BULLETPROOF_EXPONENT[] = "bulletproof";
@@ -277,11 +280,11 @@ namespace config
     uint16_t const RPC_DEFAULT_PORT = 26481; // SM64COIN
     uint16_t const ZMQ_RPC_DEFAULT_PORT = 26482; // SM64COIN
     boost::uuids::uuid const NETWORK_ID = { {
-      0x0D, 0xF0, 0x00, 0xF8, 0x9B, 0xB3, 0x5A, 0x56, 0xBC, 0xF3, 0x48, 0x18, 0x3C, 0xE6, 0x5F, 0xEE
-    } }; // SM64COIN v0.3 (a new chain): uuid5(dns, "sm64coin-testnet-v0.3"); v0.2 was uuid5(dns, "sm64coin-testnet")
+      0xC0, 0xB8, 0x19, 0xE4, 0xDA, 0xB5, 0x56, 0xA4, 0xB1, 0x54, 0x79, 0xE8, 0x51, 0x83, 0x52, 0x31
+    } }; // SM64COIN v0.4 (a new chain): uuid5(dns, "sm64coin-testnet-v0.4"); v0.3 was uuid5(dns, "sm64coin-testnet-v0.3"); v0.2 was uuid5(dns, "sm64coin-testnet")
     // SM64COIN: unlock 10, the full v1 reward (v0.3: at 20-minute blocks, emission factor 14), paid to the RingCT H point (nobody knows its key: burned).
   std::string const GENESIS_TX = "010a01ff0001ffffffffffffff01028b655970153799af2aeadc9ff1add0ea6c7251d54154cfa92c173a0dd39c1f9421017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
-    uint32_t const GENESIS_NONCE = 64301; // SM64COIN v0.3 (v0.2: 64065)
+    uint32_t const GENESIS_NONCE = 64401; // SM64COIN v0.4 (v0.3: 64301, v0.2: 64065)
   }
 
   namespace stagenet
@@ -293,11 +296,11 @@ namespace config
     uint16_t const RPC_DEFAULT_PORT = 36481; // SM64COIN
     uint16_t const ZMQ_RPC_DEFAULT_PORT = 36482; // SM64COIN
     boost::uuids::uuid const NETWORK_ID = { {
-      0x0E, 0x28, 0x5D, 0xA1, 0x6C, 0xCD, 0x57, 0xB6, 0xAF, 0x2C, 0xBD, 0xEE, 0x94, 0xDB, 0xDF, 0xBE
-    } }; // SM64COIN v0.3 (a new chain): uuid5(dns, "sm64coin-stagenet-v0.3"); v0.2 was uuid5(dns, "sm64coin-stagenet")
+      0x2A, 0x4F, 0x83, 0x46, 0x7D, 0xBD, 0x5D, 0x9A, 0x91, 0x4C, 0x04, 0xA3, 0x0A, 0x4D, 0xA0, 0x1E
+    } }; // SM64COIN v0.4 (a new chain): uuid5(dns, "sm64coin-stagenet-v0.4"); v0.3 was uuid5(dns, "sm64coin-stagenet-v0.3"); v0.2 was uuid5(dns, "sm64coin-stagenet")
     // SM64COIN: unlock 10, the full v1 reward (v0.3: at 20-minute blocks, emission factor 14), paid to the RingCT H point (nobody knows its key: burned).
   std::string const GENESIS_TX = "010a01ff0001ffffffffffffff01028b655970153799af2aeadc9ff1add0ea6c7251d54154cfa92c173a0dd39c1f9421017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
-    uint32_t const GENESIS_NONCE = 64302; // SM64COIN v0.3 (v0.2: 64066)
+    uint32_t const GENESIS_NONCE = 64402; // SM64COIN v0.4 (v0.3: 64302, v0.2: 64066)
   }
 }
 

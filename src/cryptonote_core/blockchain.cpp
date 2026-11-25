@@ -6016,6 +6016,14 @@ bool Blockchain::sm64_check_proof(const block& b, const difficulty_type& difficu
   int64_t frames = sm64coin::verify_signed_block(id, parent, gap, seed, difficulty, b.sm64_proof, nonce, b.sm64_sig, why);
   if (frames == -2 && sm64_rebuild(b.prev_id))
     frames = sm64coin::verify_signed_block(id, parent, gap, seed, difficulty, b.sm64_proof, nonce, b.sm64_sig, why);
+  if (frames == -3)
+  {
+    // SM64COIN v0.4: a bad encoding (the blob doesn't decode to its committed inputs). Nothing is
+    // recorded against the block id (sm64pow caches nothing for it); the sender is dropped like for
+    // a bad proof (bad_pow), and another peer's copy of the block is judged afresh.
+    MERROR_VER("Proof-of-play: block " << id << " arrived in a bad encoding (not an invalid block): " << why);
+    return false;
+  }
   if (frames <= 0)
   {
     MERROR_VER("Proof-of-play rejected (seed " << seed << ", difficulty " << difficulty << "): " << why);
