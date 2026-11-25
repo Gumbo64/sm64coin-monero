@@ -63,6 +63,7 @@ namespace cryptonote
     static constexpr uint64_t RENAME_SECONDS = 600;  // per address
     static constexpr uint64_t SAVE_SECONDS = 60;
     static constexpr size_t PENDING_MAX = 64, PENDING_PER_SOURCE = 6, PENDING_HEIGHTS = 200000;
+    static constexpr size_t SHARE_HEIGHTS = 20000;   // heights per periodic share message
     static constexpr uint64_t MAX_CATCH_UP = 2000;   // blocks checked after a pause (else re-verified)
 
     void init(const std::string &path, network_type nettype);
@@ -80,6 +81,7 @@ namespace cryptonote
     void flush(); // writes the file now if it changed (shutdown)
     std::vector<sm64_board_row> rows() const;
     std::vector<sm64_board_entry> entries() const; // with their verified heights
+    std::vector<sm64_board_entry> share_chunk();   // the next few, for the periodic p2p share
     void set_enabled(bool on);
     bool enabled() const { return m_enabled; }
     uint64_t derivations() const { return m_derivations; } // block reads + derivations so far
@@ -146,5 +148,6 @@ namespace cryptonote
     std::atomic<uint64_t> m_rewind{UINT64_MAX};
     mutable std::atomic<uint64_t> m_derivations{0};
     uint64_t m_poll_at = 0;
+    size_t m_share_at = 0;
   };
 }

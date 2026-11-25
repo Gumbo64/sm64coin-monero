@@ -1731,7 +1731,7 @@ namespace cryptonote
     });
     m_sm64_board_share.do_call([this]() {
       NOTIFY_SM64_BOARD::request arg{};
-      arg.entries = m_sm64_board.entries();
+      arg.entries = m_sm64_board.share_chunk();
       if (!arg.entries.empty())
         m_pprotocol->relay_sm64_board(arg, boost::uuids::nil_uuid());
       return true;

@@ -410,17 +410,23 @@ namespace cryptonote
     // Re-verify every hit (a claim that fails is dropped) instead of rescanning: a reorg deeper than HISTORY, or a stale file.
     auto reverify_all = [&]() {
       std::lock_guard<std::mutex> g(m_lock);
+      bool any = false;
       for (auto *v : {&m_items, &m_pending})
         for (auto &it : *v)
-        {
-          for (auto x = it.hits.rbegin(); x != it.hits.rend(); ++x)
-            it.claims.push_back(x->height);
-          it.hits.clear();
-          it.lenient = true;
-          refresh(it);
-        }
-      m_work = true;
-      m_dirty = true;
+          if (!it.hits.empty())
+          {
+            for (auto x = it.hits.rbegin(); x != it.hits.rend(); ++x)
+              it.claims.push_back(x->height);
+            it.hits.clear();
+            it.lenient = true;
+            refresh(it);
+            any = true;
+          }
+      if (any)
+      {
+        m_work = true;
+        m_dirty = true;
+      }
     };
 
     // 1. Where are we on the chain.
@@ -430,8 +436,7 @@ namespace cryptonote
         m_next = m_saved_tip;
       else
       {
-        if (m_saved_tip > 0 || !m_items.empty())
-          reverify_all();
+        reverify_all();
         m_next = h;
       }
       m_have_next = true;
@@ -783,6 +788,29 @@ namespace cryptonote
     std::vector<sm64_board_row> v;
     for (const auto &it : m_items)
       v.push_back(it.row);
+    return v;
+  }
+
+  std::vector<sm64_board_entry> sm64_board::share_chunk()
+  {
+    // The next entries of the board, round robin, up to SHARE_HEIGHTS heights in all (a big board
+    // is not sent whole every time); an entry is always sent complete.
+    std::lock_guard<std::mutex> g(m_lock);
+    std::vector<sm64_board_entry> v;
+    size_t total = 0;
+    for (size_t n = 0; n < m_items.size(); ++n)
+    {
+      const item &it = m_items[(m_share_at + n) % m_items.size()];
+      if (!v.empty() && total + it.hits.size() > SHARE_HEIGHTS)
+        break;
+      sm64_board_entry e = it.row.entry;
+      e.heights.clear();
+      for (const auto &x : it.hits)
+        e.heights.push_back(x.height);
+      total += it.hits.size();
+      v.push_back(std::move(e));
+    }
+    m_share_at = m_items.empty() ? 0 : (m_share_at + v.size()) % m_items.size();
     return v;
   }
 
