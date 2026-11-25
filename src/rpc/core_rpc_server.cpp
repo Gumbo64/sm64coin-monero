@@ -41,6 +41,7 @@ using namespace epee;
 #include "common/updates.h"
 #include "common/download.h"
 #include "common/util.h"
+#include "common/varint.h" // SM64COIN v0.4: sm64_records_bytes
 #include "common/perf_timer.h"
 #include "int-util.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
@@ -2965,6 +2966,7 @@ namespace cryptonote
     }
     res.sm64_input_hash = string_tools::pod_to_hex(sm64coin::proof_id(blk.sm64_proof)); // SM64COIN v0.4
     res.sm64_codec = sm64coin::proof_codec(blk.sm64_proof); // SM64COIN v0.4
+    res.sm64_records_bytes = tools::get_varint_data(blk.sm64_proofs.size()).size() + blk.sm64_proofs.size(); // SM64COIN v0.4
     res.blob = string_tools::buff_to_hex_nodelimer(t_serializable_object_to_blob(blk));
     res.json = obj_to_json_str(blk);
     {

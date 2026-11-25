@@ -1690,6 +1690,7 @@ namespace cryptonote
       uint32_t sm64_pad_mix; // SM64COIN: the same for the pad stream
       std::string sm64_input_hash; // SM64COIN v0.4: the committed input hash (what the block id commits to for the proof)
       int32_t sm64_codec; // SM64COIN v0.4: the codec id of the returned proof's encoding (-1 none)
+      uint64_t sm64_records_bytes; // SM64COIN v0.4: the serialized sm64_proofs field that ends the blob (varint length + records), after the 64-byte sm64_sig
       
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_access_response_base)
@@ -1717,6 +1718,7 @@ namespace cryptonote
         KV_SERIALIZE(sm64_pad_mix)
         KV_SERIALIZE(sm64_input_hash)
         KV_SERIALIZE(sm64_codec)
+        KV_SERIALIZE(sm64_records_bytes)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<response_t> response;
