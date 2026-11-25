@@ -6022,7 +6022,7 @@ bool Blockchain::sm64_check_proof(const block& b, const difficulty_type& difficu
     return false;
   }
   if (eligible)
-    sm64coin::note_eligible(id, b.prev_id, seed, (uint32_t)frames, b.timestamp, b.sm64_sig); // SM64COIN v0.3: publish-on-find's window (pof.rs)
+    sm64coin::note_eligible(id, b.prev_id, seed, (uint32_t)frames, b.timestamp, b.sm64_sig, b.sm64_proof); // SM64COIN v0.3: publish-on-find's window (pof.rs)
   MINFO("Proof-of-play accepted: " << frames << " frames, seed " << seed << ", difficulty " << difficulty);
   return true;
 }
@@ -6310,7 +6310,7 @@ bool Blockchain::sm64_hold_alt(const block& b, const crypto::hash& id, const poo
   // sibling is not stored: if a peer builds on it, its child arrives as an orphan and the pair comes
   // in a sync span (DOS.md). (It used to be admit.rs's per-parent quota, replayed here under the
   // lock: up to 2 x 36,000 frames per height.)
-  if (claim != 2 && !sm64coin::pof_candidate(m_db->top_block_hash(), id, seed, frames, b.timestamp, b.sm64_sig))
+  if (claim != 2 && !sm64coin::pof_candidate(m_db->top_block_hash(), id, seed, frames, b.timestamp, b.sm64_sig, b.sm64_proof))
   {
     MINFO("Proof-of-play: not replaying block " << id << " (" << frames << " frames): a sibling of our tip that cannot displace it");
     sm64_refuse(id, "a sibling of the current tip that cannot displace it (another block was eligible first, and this run is not shorter inside the displacement window)");
@@ -6428,7 +6428,7 @@ void Blockchain::sm64_note_history()
     std::string why;
     sm64coin::block_scope scope(block_to_blob(b), sm64_seed(b), h, n - 1);
     sm64coin::note_claim(sm64_seed(b), b.sm64_proof, sm64_miner_nonce(b), b.sm64_sig, why);
-    sm64coin::note_history(get_block_hash(b), b.prev_id, sm64_seed(b), sm64coin::proof_frames(b.sm64_proof), b.timestamp, b.sm64_sig);
+    sm64coin::note_history(get_block_hash(b), b.prev_id, sm64_seed(b), sm64coin::proof_frames(b.sm64_proof), b.timestamp, b.sm64_sig, b.sm64_proof);
   }
 }
 //------------------------------------------------------------------
@@ -6490,7 +6490,7 @@ bool Blockchain::sm64_skip_alt(const block& b, const crypto::hash& id, uint64_t 
   }
   // SM64COIN v0.3 publish-on-find: a sibling of our tip that could displace it is worth a replay.
   if (height == top && have_main && main_seed != seed && top > 0 && b.prev_id == m_db->get_block_hash_from_height(top - 1) &&
-      sm64coin::pof_candidate(m_db->top_block_hash(), id, seed, frames, b.timestamp, b.sm64_sig))
+      sm64coin::pof_candidate(m_db->top_block_hash(), id, seed, frames, b.timestamp, b.sm64_sig, b.sm64_proof))
     return false;
   if (sm64coin::admit_alt(id, b.prev_id, seed, frames, height, top, have_main ? &main_seed : nullptr, why))
     return false;

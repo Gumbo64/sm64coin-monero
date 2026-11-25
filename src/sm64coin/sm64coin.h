@@ -67,7 +67,7 @@ namespace sm64coin
   void evidence_persist(const std::string &path);
   // Fork choice with the equivocation penalty (equivocation.rs): the two chains above the fork point. True: switch.
   bool fork_choice(uint64_t main_len, const std::vector<crypto::hash> &main_seeds, uint64_t alt_len, const std::vector<crypto::hash> &alt_seeds);
-  void note_history(const crypto::hash &id, const crypto::hash &parent, const crypto::hash &seed, uint32_t frames, uint64_t timestamp, const crypto::signature &sig);
+  void note_history(const crypto::hash &id, const crypto::hash &parent, const crypto::hash &seed, uint32_t frames, uint64_t timestamp, const crypto::signature &sig, const std::string &proof);
   // While alive: the block this thread handles, so evidence formed about its template carries it (relayable).
   class block_scope
   {
@@ -84,9 +84,9 @@ namespace sm64coin
   // Publish-on-find (pof.rs): `id` became eligible now; whether eligible
   // sibling `alt` replaces our childless `tip`; whether a sibling claiming
   // `frames` stamped `timestamp` could (worth a replay); the freshness bound.
-  void note_eligible(const crypto::hash &id, const crypto::hash &parent, const crypto::hash &seed, uint32_t frames, uint64_t timestamp, const crypto::signature &sig); // sig: the equal-length tie-break
+  void note_eligible(const crypto::hash &id, const crypto::hash &parent, const crypto::hash &seed, uint32_t frames, uint64_t timestamp, const crypto::signature &sig, const std::string &proof); // sig, proof: the equal-length tie-break (canonical size, then the signature hash)
   bool displaces(const crypto::hash &tip, const crypto::hash &alt);
-  bool pof_candidate(const crypto::hash &tip, const crypto::hash &id, const crypto::hash &seed, uint32_t frames, uint64_t timestamp, const crypto::signature &sig); // judged when `id` became eligible here; also a clean sibling of an equivocated tip
+  bool pof_candidate(const crypto::hash &tip, const crypto::hash &id, const crypto::hash &seed, uint32_t frames, uint64_t timestamp, const crypto::signature &sig, const std::string &proof); // judged when `id` became eligible here; also a clean sibling of an equivocated tip
   // The reorganisation cap (reorg.rs): the operator's cap (0 unlimited), a one-time allowance, the check.
   void set_max_reorg(uint64_t n);
   void allow_reorg(const crypto::hash &id);
