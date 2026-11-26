@@ -547,6 +547,7 @@ namespace cryptonote
       res.sm64_z_prob = t.z_prob;
       res.sm64_timing_mix = t.timing_mix; res.sm64_pad_mix = t.pad_mix; // SM64COIN
       res.sm64_rules = sm64coin::rules_name();
+      res.sm64coin_version = sm64coin::release_version(); res.sm64_game_build = sm64coin::game_build(); // SM64COIN: public, also restricted
       res.sm64_goal = sm64coin::rules_goal();
       res.sm64_easier_at = 0;
       const uint64_t parent_ts = bc.sm64_parent_timestamp(probe);
@@ -3472,6 +3473,7 @@ namespace cryptonote
 
     res.version = CORE_RPC_VERSION;
     res.release = MONERO_VERSION_IS_RELEASE;
+    res.sm64coin_version = sm64coin::release_version(); res.sm64_game_build = sm64coin::game_build(); res.sm64_rules = sm64coin::rules_name(); // SM64COIN
     res.current_height = m_core.get_current_blockchain_height();
     res.target_height = m_p2p.get_payload_object().is_synchronized() ? 0 : m_core.get_target_blockchain_height();
     for (const auto &hf : m_core.get_blockchain_storage().get_hardforks())

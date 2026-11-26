@@ -420,6 +420,22 @@ namespace sm64coin
     return n;
   }
 
+  std::string release_version()
+  {
+#ifdef SM64COIN_VERSION
+    return SM64COIN_VERSION;
+#else
+    return "dev";
+#endif
+  }
+
+  std::string game_build()
+  {
+    char b[128];
+    sm64pow_game_build(b, sizeof(b));
+    return b;
+  }
+
   std::string rules_goal()
   {
     char n[128], g[512];

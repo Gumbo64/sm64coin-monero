@@ -756,6 +756,8 @@ namespace cryptonote
       uint64_t sm64_easier_at;
       std::string sm64_rules;
       std::string sm64_goal;
+      std::string sm64coin_version; // SM64COIN: the release this node runs ("dev": local build)
+      std::string sm64_game_build;  // SM64COIN: the game build id consensus runs
       std::string version;
       bool synchronized;
       bool restricted;
@@ -811,6 +813,8 @@ namespace cryptonote
         KV_SERIALIZE(sm64_timing_mix)
         KV_SERIALIZE(sm64_pad_mix)
         KV_SERIALIZE(sm64_easier_at)
+        KV_SERIALIZE(sm64coin_version)
+        KV_SERIALIZE(sm64_game_build)
         KV_SERIALIZE(sm64_rules)
         KV_SERIALIZE(sm64_goal)
         KV_SERIALIZE(synchronized)
@@ -2552,11 +2556,15 @@ namespace cryptonote
       uint64_t current_height;
       uint64_t target_height;
       std::vector<hf_entry> hard_forks;
+      std::string sm64coin_version, sm64_game_build, sm64_rules; // SM64COIN
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_response_base)
         KV_SERIALIZE(version)
         KV_SERIALIZE(release)
+        KV_SERIALIZE_OPT(sm64coin_version, std::string())
+        KV_SERIALIZE_OPT(sm64_game_build, std::string())
+        KV_SERIALIZE_OPT(sm64_rules, std::string())
         KV_SERIALIZE_OPT(current_height, (uint64_t)0)
         KV_SERIALIZE_OPT(target_height, (uint64_t)0)
         KV_SERIALIZE_OPT(hard_forks, std::vector<hf_entry>())
