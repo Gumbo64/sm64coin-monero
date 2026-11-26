@@ -119,7 +119,8 @@ namespace sm64coin
   int queue_wait(unsigned timeout_ms, crypto::hash &id, std::string &why);
   // Whether `id` was replayed valid and is waiting to be added (consumes it).
   bool queue_take_cleared(const crypto::hash &id);
-  void queue_also(const crypto::hash &id); // an already queued claim sent again by this thread's source (a fallback if the first is penalised)
+  void queue_also(const crypto::hash &id);
+  void queue_forget(const crypto::hash &id); // SM64COIN v0.4: a copy of the block was a bad encoding / bad witness: judge the next copy afresh // an already queued claim sent again by this thread's source (a fallback if the first is penalised)
   bool has_state(const crypto::hash &id);
   // Block `id`'s cached end state (the game's save state), gzip; false unless cached.
   bool end_state_gz(const crypto::hash &id, std::string &out);

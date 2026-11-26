@@ -6021,8 +6021,16 @@ bool Blockchain::sm64_check_timestamp(const block& b) const
     MERROR_VER("Timestamp of block with id: " << get_block_hash(b) << ", " << b.timestamp << ", is not after its parent's");
     return false;
   }
-  // SM64COIN v0.4: no launch-time floor (v0.3 refused mainnet blocks stamped before its launch);
-  // the network id and the genesis block separate the chain.
+  // A fork from the genesis block (timestamp 0) must not declare time it never spent: without a
+  // floor, a chain could be backdated to 1970 and pre-mined offline (every gap at the limit's cap).
+  // SM64COIN v0.4: the floor is the release moment (pow/sm64pow rules.rs launch_timestamp), already
+  // past when the node runs, so nobody waits; mainnet and stagenet (testnet: test tooling replays
+  // older chains).
+  if (m_nettype != TESTNET && b.timestamp < sm64coin::launch_timestamp())
+  {
+    MERROR_VER("Timestamp of block with id: " << get_block_hash(b) << ", " << b.timestamp << ", predates the chain's launch " << sm64coin::launch_timestamp());
+    return false;
+  }
   return true;
 }
 //------------------------------------------------------------------
@@ -6136,8 +6144,11 @@ bool Blockchain::sm64_check_proof(const block& b, const difficulty_type& difficu
   {
     // SM64COIN v0.4: a bad encoding (the blob doesn't decode to its committed inputs). Nothing is
     // recorded against the block id (sm64pow caches nothing for it); the sender is dropped like for
-    // a bad proof (bad_pow), and another peer's copy of the block is judged afresh.
+    // a bad proof (bad_pow), and another peer's copy of the block is judged afresh (the replay queue
+    // forgets the id).
     MERROR_VER("Proof-of-play: block " << id << " arrived in a bad encoding (not an invalid block): " << why);
+    sm64coin::queue_forget(id);
+    s_sm64_bad_copy = true;
     return false;
   }
   if (frames <= 0)
@@ -6162,6 +6173,8 @@ bool Blockchain::sm64_check_proof(const block& b, const difficulty_type& difficu
     if (r == -3)
     {
       MERROR_VER("Proof-of-play: block " << id << " arrived with a bad witness for its proof records (not an invalid block): " << why);
+      sm64coin::queue_forget(id); // the queue's valid verdict was for the run, not for this copy's records
+      s_sm64_bad_copy = true;
       return false;
     }
     if (r != 1)
@@ -6223,10 +6236,26 @@ bool Blockchain::sm64_parent_facts(const crypto::hash& id, sm64coin::parent_fact
 //------------------------------------------------------------------
 void Blockchain::sm64_pool_tip() const
 {
-  // SM64COIN v0.4 stage B: the proof pool collects proofs for our tip's height.
-  sm64coin::parent_facts h;
-  if (m_db->height() == 0 || !sm64_parent_facts(m_db->top_block_hash(), h))
+  // SM64COIN v0.4 stage B: the proof pool collects proofs for our tip's height. Called per proof
+  // message: only a new tip or new alternative blocks (a sibling may have arrived) need the work
+  // below (it walks the alt-block DB).
+  if (m_db->height() == 0)
     return;
+  const crypto::hash top = m_db->top_block_hash();
+  const uint64_t alts = m_db->get_alt_block_count();
+  {
+    CRITICAL_REGION_LOCAL(m_sm64_pool_tip_lock);
+    if (top == m_sm64_pool_tip_seen && alts == m_sm64_pool_alts_seen)
+      return;
+  }
+  sm64coin::parent_facts h;
+  if (!sm64_parent_facts(top, h))
+    return;
+  {
+    CRITICAL_REGION_LOCAL(m_sm64_pool_tip_lock);
+    m_sm64_pool_tip_seen = top;
+    m_sm64_pool_alts_seen = alts;
+  }
   sm64coin::pool_tip(h);
   // A sibling of our tip (same parent, another key: a displaced tip, or a valid block that lost the
   // height) is a proof for the tip's height: offer it (the pool dedupes; a known run replays from cache).
@@ -6240,6 +6269,7 @@ void Blockchain::sm64_pool_tip() const
     }
     return true;
   }, true);
+  sm64coin::source_scope sm64_local(std::string(), (sm64coin::source_kind)0); // our own alt blocks: not the peer's replay budget
   for (const std::string &blob : siblings)
   {
     std::string record, why;
@@ -6468,9 +6498,16 @@ bool Blockchain::sm64_enqueue(const block& b, const crypto::hash& id, const pool
   j.due = due;
   {
     CRITICAL_REGION_LOCAL(m_sm64_held_lock);
-    if (m_sm64_held.count(id))
+    const auto held = m_sm64_held.find(id);
+    if (held != m_sm64_held.end())
     {
       sm64coin::queue_also(id); // another source sent the same claim: its fallback (queue.rs)
+      // SM64COIN v0.4: a copy in other bytes (another encoding, another records witness) is kept as
+      // an alternate: if the held copy turns out a bad copy, the releaser tries it.
+      auto &alts = held->second.alternates;
+      const blobdata mine = block_to_blob(b);
+      if (alts.size() < 3 && mine != block_to_blob(held->second.b) && std::none_of(alts.begin(), alts.end(), [&](const std::pair<block, pool_supplement> &a) { return block_to_blob(a.first) == mine; }))
+        alts.emplace_back(b, extra);
       return true;
     }
     m_sm64_held[id] = sm64_held_block{b, extra, due, j.seed};
@@ -6579,14 +6616,27 @@ void Blockchain::sm64_prereplay(const block& b)
 //------------------------------------------------------------------
 bool Blockchain::sm64_take_held(const crypto::hash& id, block& b, pool_supplement& extra)
 {
+  std::vector<std::pair<block, pool_supplement>> alternates;
+  return sm64_take_held(id, b, extra, alternates);
+}
+bool Blockchain::sm64_take_held(const crypto::hash& id, block& b, pool_supplement& extra, std::vector<std::pair<block, pool_supplement>>& alternates)
+{
   CRITICAL_REGION_LOCAL(m_sm64_held_lock);
   const auto it = m_sm64_held.find(id);
   if (it == m_sm64_held.end())
     return false;
   b = std::move(it->second.b);
   extra = std::move(it->second.extra);
+  alternates = std::move(it->second.alternates);
   m_sm64_held.erase(it);
   return true;
+}
+thread_local bool Blockchain::s_sm64_bad_copy = false;
+bool Blockchain::sm64_take_bad_copy()
+{
+  const bool r = s_sm64_bad_copy;
+  s_sm64_bad_copy = false;
+  return r;
 }
 //------------------------------------------------------------------
 bool Blockchain::sm64_reorg_allowed(const std::list<block_extended_info>& alt_chain) const

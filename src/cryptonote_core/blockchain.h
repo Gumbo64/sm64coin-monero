@@ -350,6 +350,9 @@ namespace cryptonote
     static bool sm64_add_proof_outputs(transaction& tx, const std::string& field, uint64_t fee); // SM64COIN v0.4 stage C: the coinbase outputs that pay the records
     bool sm64_check_proof_outputs(const block& b, uint64_t base_reward, uint64_t& proofs_total) const; // SM64COIN v0.4 stage C
     void sm64_pool_tip() const; // SM64COIN v0.4 stage B: tell the proof pool our tip
+    mutable crypto::hash m_sm64_pool_tip_seen = crypto::null_hash; // SM64COIN v0.4: sm64_pool_tip's last (tip, alt-block count)
+    mutable uint64_t m_sm64_pool_alts_seen = 0;
+    mutable epee::critical_section m_sm64_pool_tip_lock;
     // Makes block `h`'s end state available (replays its ancestors back to the cycle start as needed).
     bool sm64_rebuild(const crypto::hash& h) const;
     // The perturbation seed of a block: cn_fast_hash of its hashing blob with the
@@ -388,6 +391,13 @@ namespace cryptonote
     void sm64_prereplay(const block& b); // this node's own miner's block: replayed on the caller's thread, outside the lock
     // Removes and returns the claim held for `id` (the releaser, when the queue has a verdict).
     bool sm64_take_held(const crypto::hash& id, block& b, pool_supplement& extra);
+    // SM64COIN v0.4: and the other copies of it that arrived while it waited (other encodings, other
+    // record witnesses: at most a few, from other sources), tried if the held copy is a bad copy.
+    bool sm64_take_held(const crypto::hash& id, block& b, pool_supplement& extra, std::vector<std::pair<block, pool_supplement>>& alternates);
+    // SM64COIN v0.4: whether the last block this thread checked was refused as a bad copy (a bad
+    // encoding or a bad witness of its records: nothing said about the block id); clears it.
+    static bool sm64_take_bad_copy();
+    static thread_local bool s_sm64_bad_copy;
     // While alive, sm64_hold lets this thread's blocks through (the queue could not decide them).
     struct sm64_bypass_scope { sm64_bypass_scope(); ~sm64_bypass_scope(); };
     // SM64COIN: whether to skip (not replay, not store) an alternative block
@@ -1288,7 +1298,7 @@ namespace cryptonote
     network_type m_nettype;
     bool m_offline;
     difficulty_type m_fixed_difficulty;
-    struct sm64_held_block { block b; pool_supplement extra; uint64_t due; crypto::hash seed; }; // SM64COIN
+    struct sm64_held_block { block b; pool_supplement extra; uint64_t due; crypto::hash seed; std::vector<std::pair<block, pool_supplement>> alternates; }; // SM64COIN (v0.4: alternates)
     std::map<crypto::hash, sm64_held_block> m_sm64_held; // SM64COIN: the hold policy
     bool m_sm64_readding = false; // SM64COIN: re-adding the disconnected chain after a switch (store only)
     mutable epee::critical_section m_sm64_held_lock; // SM64COIN

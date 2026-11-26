@@ -1674,20 +1674,40 @@ namespace cryptonote
     // finds the result instead of replaying under the lock. Relay only after it is added.
     block b;
     pool_supplement extra;
-    if (!m_blockchain_storage.sm64_take_held(id, b, extra))
+    std::vector<std::pair<block, pool_supplement>> alternates; // SM64COIN v0.4: other copies of the same block
+    if (!m_blockchain_storage.sm64_take_held(id, b, extra, alternates))
       return;
-    if (verdict == 0 || verdict == 2 || verdict == 4) // SM64COIN v0.4: 4 = a bad encoding (drop this copy, not the block id)
+    if (verdict == 0 || verdict == 2 || (verdict == 4 && alternates.empty())) // SM64COIN v0.4: 4 = a bad encoding (drop this copy, not the block id)
     {
       MINFO("Proof-of-play: queued block " << id << (verdict == 0 ? " is invalid: " : verdict == 4 ? " arrived in a bad encoding: " : " dropped without a replay: ") << why);
       return;
     }
     block_verification_context bvc{};
-    const blobdata blob = block_to_blob(b);
+    blobdata blob = block_to_blob(b);
+    bool bad_copy = verdict == 4;
+    if (!bad_copy)
     {
       std::unique_ptr<Blockchain::sm64_bypass_scope> bypass;
       if (verdict == 3)
         bypass.reset(new Blockchain::sm64_bypass_scope()); // not decided by the queue: verify the old way
+      Blockchain::sm64_take_bad_copy();
       handle_single_incoming_block(blob, &b, bvc, extra, true);
+      bad_copy = Blockchain::sm64_take_bad_copy();
+    }
+    // SM64COIN v0.4: the held copy was a bad copy (its encoding or its records' witness: nothing is
+    // known against the block id, the queue forgot it): try the other copies that arrived while it
+    // waited, verified inline (at most 3, each from another source).
+    for (size_t k = 0; bad_copy && k < alternates.size(); ++k)
+    {
+      MINFO("Proof-of-play: queued block " << id << " was a bad copy" << (verdict == 4 ? " (" + why + ")" : std::string()) << "; trying another peer's copy");
+      b = std::move(alternates[k].first);
+      extra = std::move(alternates[k].second);
+      blob = block_to_blob(b);
+      bvc = block_verification_context{};
+      Blockchain::sm64_bypass_scope bypass;
+      Blockchain::sm64_take_bad_copy();
+      handle_single_incoming_block(blob, &b, bvc, extra, true);
+      bad_copy = Blockchain::sm64_take_bad_copy();
     }
     if (bvc.m_added_to_main_chain && !bvc.m_sm64_stale)
     {

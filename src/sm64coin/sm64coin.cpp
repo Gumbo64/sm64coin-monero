@@ -177,6 +177,7 @@ namespace sm64coin
   }
   bool queue_take_cleared(const crypto::hash &id) { return sm64pow_queue_take_cleared(u8(id)) == 1; }
   void queue_also(const crypto::hash &id) { sm64pow_queue_also(u8(id)); }
+  void queue_forget(const crypto::hash &id) { sm64pow_queue_forget(u8(id)); }
 
   int evidence_received(const std::string &evidence, const std::string &host, uint64_t top)
   {
