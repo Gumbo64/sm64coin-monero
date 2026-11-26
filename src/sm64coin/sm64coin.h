@@ -265,4 +265,7 @@ namespace sm64coin
   task task_for(const difficulty_type &difficulty);
   std::string rules_name();
   std::string rules_goal();
+  // The SM64Coin release this daemon was built as ("dev" for a local build), and the game build it runs.
+  std::string release_version();
+  std::string game_build();
 }

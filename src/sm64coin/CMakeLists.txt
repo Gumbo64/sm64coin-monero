@@ -24,6 +24,9 @@ add_dependencies(sm64pow sm64pow_rust)
 include_directories("${SM64POW_DIR}/sm64pow")
 monero_add_library(sm64coin sm64coin.cpp sm64coin.h)
 add_dependencies(sm64coin sm64pow_rust)
+if(SM64COIN_VERSION)
+  set_source_files_properties(sm64coin.cpp PROPERTIES COMPILE_DEFINITIONS "SM64COIN_VERSION=\"${SM64COIN_VERSION}\"")
+endif()
 target_link_libraries(sm64coin
   PUBLIC
     cncrypto
