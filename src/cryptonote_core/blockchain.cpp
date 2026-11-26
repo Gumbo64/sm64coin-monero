@@ -6642,7 +6642,7 @@ bool Blockchain::sm64_fork_choice(const std::list<block_extended_info>& alt_chai
   // pow/sm64pow decides: v0.3's rule when proof weight is off, else longer AND heavier (records.rs prefer_alt).
   const bool r = sm64coin::fork_choice_weighted(main_len, main_seeds, main_counted, alt_chain.size(), alt_seeds, alt_counted);
   if (r != (alt_chain.size() > main_len))
-    MGINFO_YELLOW("Proof-of-play: fork choice with the equivocation penalty: " << (r ? "switching to" : "keeping ours against") << " an alternative chain of " << alt_chain.size() << " blocks (ours: " << main_len << " above the fork)");
+    MGINFO_YELLOW("Proof-of-play: fork choice (equivocation penalty; proof weight when on): " << (r ? "switching to" : "keeping ours against") << " an alternative chain of " << alt_chain.size() << " blocks (ours: " << main_len << " above the fork)");
   return r;
 }
 //------------------------------------------------------------------
