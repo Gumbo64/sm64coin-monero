@@ -195,7 +195,7 @@ namespace cryptonote
       tx.version = 1;
 
     //lock
-    tx.unlock_time = height + sm64coin_mined_money_unlock_window(height); // SM64COIN v0.4.2: 72 below SM64COIN_UNLOCK6_HEIGHT, 6 from it
+    tx.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
     tx.vin.push_back(in);
 
     tx.invalidate_hashes();
