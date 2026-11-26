@@ -1992,6 +1992,27 @@ namespace cryptonote
     }
     else
       blob_reserve.resize(req.reserve_size, 0);
+    // SM64COIN v0.4: a payout address for the proof (a subaddress is fine: only the payout TLV names
+    // it, the coinbase output still pays wallet_address); the daemon keeps a payout TLV in the nonce.
+    if (!req.sm64_payout_address.empty())
+    {
+      cryptonote::address_parse_info pinfo;
+      if (!cryptonote::get_account_address_from_str(pinfo, nettype(), req.sm64_payout_address))
+      {
+        error_resp.code = CORE_RPC_ERROR_CODE_WRONG_WALLET_ADDRESS;
+        error_resp.message = "Failed to parse sm64_payout_address";
+        return false;
+      }
+      if (blob_reserve.size() >= 33 && (uint8_t)blob_reserve[0] == 0x64)
+      {
+        blob_reserve.resize(33);
+        blob_reserve.push_back((char)0x01);
+        blob_reserve.push_back((char)65);
+        blob_reserve.push_back((char)(pinfo.is_subaddress ? 1 : 0));
+        blob_reserve.append(pinfo.address.m_spend_public_key.data, 32);
+        blob_reserve.append(pinfo.address.m_view_public_key.data, 32);
+      }
+    }
     cryptonote::difficulty_type wdiff;
     crypto::hash prev_block;
     if (!req.prev_block.empty())
@@ -2095,6 +2116,7 @@ namespace cryptonote
           res.sm64_cycle_start_height = res.height - cycle.size();
       }
       res.sm64_valid_at = 0;
+      res.sm64_records_ready_at = sm64coin::records_ready_at(b.prev_id); // SM64COIN v0.4
       if (req.sm64_frames)
       {
         // The first second at which the limit reaches sm64_frames (it only grows).

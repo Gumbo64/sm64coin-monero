@@ -2821,7 +2821,7 @@ skip:
       if (peer_id && exclude_context.m_connection_id != context.m_connection_id && context.m_remote_address.get_zone() == epee::net_utils::zone::public_)
       {
         LOG_DEBUG_CC(context, "RELAYING FLUFFY BLOCK TO PEER");
-        if (sm64_parsed && sm64coin::codecs_need(sm64_b.sm64_proof, context.m_sm64_codecs) != 0)
+        if (sm64_parsed && (sm64coin::codecs_need(sm64_b.sm64_proof, context.m_sm64_codecs) != 0 || (sm64_b.sm64_proofs.size() > 1 && (context.m_sm64_codecs.empty() || context.m_sm64_codecs != sm64coin::codecs_mask(sm64coin::codecs_advert())))))
           transcoded[context.m_sm64_codecs].push_back({context.m_remote_address.get_zone(), context.m_connection_id});
         else
           fluffyConnections.push_back({context.m_remote_address.get_zone(), context.m_connection_id});
@@ -2841,6 +2841,14 @@ skip:
       NOTIFY_NEW_FLUFFY_BLOCK::request other = arg;
       if (!sm64_blob_for_peer(arg.b.block, t.first, other.b.block))
       {
+        if (sm64coin::codecs_need(sm64_b.sm64_proof, t.first) == 0)
+        {
+          // Only the records were checked and nothing needed changing: send it as is.
+          epee::levin::message_writer same{32 * 1024};
+          epee::serialization::store_t_to_binary(arg, same.buffer);
+          m_p2p->relay_notify_to_list(NOTIFY_NEW_FLUFFY_BLOCK::ID, std::move(same), std::move(t.second));
+          continue;
+        }
         MWARNING("Proof-of-play: could not transcode block " << get_block_hash(sm64_b) << " for " << t.second.size() << " peer(s); not relayed to them");
         continue;
       }
@@ -2860,9 +2868,29 @@ skip:
     block b;
     if (!parse_and_validate_block_from_blob(block_blob, b))
       return false;
+    const crypto::hash id0 = get_block_hash(b);
+    // SM64COIN v0.4: the proof records too (any record encoding the peer doesn't decode, e.g. a
+    // state-coded record another includer chose; pow/sm64pow re-encodes them stateless).
+    bool records_changed = false;
+    {
+      std::string field;
+      if (b.sm64_proofs.size() > 1 && sm64coin::records_for_peer(b.sm64_proofs, mask, field))
+      {
+        b.sm64_proofs = std::move(field);
+        records_changed = true;
+      }
+    }
     const int need = sm64coin::codecs_need(b.sm64_proof, mask);
     if (need == 0)
-      return false;
+    {
+      if (!records_changed)
+        return false;
+      b.invalidate_hashes();
+      if (get_block_hash(b) != id0)
+        return false;
+      out = t_serializable_object_to_blob(b);
+      return true;
+    }
     std::string inputs, proof, why;
     if (need == 2 && !m_core.get_blockchain_storage().sm64_played(b, inputs, true))
     {
@@ -2874,7 +2902,7 @@ skip:
       MERROR("Proof-of-play: transcoding block " << get_block_hash(b) << " failed: " << why);
       return false;
     }
-    const crypto::hash id = get_block_hash(b);
+    const crypto::hash id = id0;
     b.sm64_proof = std::move(proof);
     b.invalidate_hashes();
     if (get_block_hash(b) != id)

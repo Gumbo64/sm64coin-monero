@@ -192,7 +192,25 @@ namespace sm64coin
   bool pool_field_for_root(const crypto::hash &root, std::string &field); // a selection's field, by its root
   bool record_from_block(const std::string &block_blob, std::string &record); // a sealed block as a proof record
   // The v0.4 extra nonce: the miner's 0x64 || key + the payout TLV + the root TLV (root null: none). Empty if invalid.
-  std::string template_nonce(const std::string &miner_nonce, const crypto::public_key &spend, const crypto::public_key &view, const crypto::hash *root);
+  std::string template_nonce(const std::string &miner_nonce, const crypto::public_key &spend, const crypto::public_key &view, const crypto::hash *root, bool subaddress = false);
+  // SM64COIN v0.4 stage C (records.rs, payout.rs): the coinbase outputs that pay a block's records
+  // (output index first + i; empty when proof rewards are off), and the check of a miner tx's
+  // outputs (key, view tag, amount) and additional tx public keys against them.
+  struct proof_out { crypto::public_key key; uint8_t view_tag = 0; crypto::public_key tx_pub; uint64_t amount = 0; };
+  bool proof_outputs(const std::string &field, uint64_t base_reward, uint32_t first, std::vector<proof_out> &outs);
+  struct coinbase_out { crypto::public_key key; uint8_t view_tag = 0; uint64_t amount = 0; };
+  bool check_miner_tx(const std::string &field, uint64_t base_reward, const std::vector<coinbase_out> &outs, const std::vector<crypto::public_key> &add_keys, std::string &why);
+  // How many of an accepted block's records count for weight (structural, no replay).
+  uint32_t count_records(const std::string &field, const std::string &nonce, const parent_facts &h);
+  // Fork choice with proof weight (longer AND heavier; tainted blocks weigh 0): the chains above the fork point.
+  bool fork_choice_weighted(uint64_t main_len, const std::vector<crypto::hash> &main_seeds, const std::vector<uint32_t> &main_counted,
+                            uint64_t alt_len, const std::vector<crypto::hash> &alt_seeds, const std::vector<uint32_t> &alt_counted);
+  // The sync pre-pass for records: full block blobs in chain order with their ids and retarget difficulties.
+  uint64_t preverify_records(const std::vector<crypto::hash> &ids, const std::vector<std::string> &blocks, const std::vector<uint64_t> &difficulties, unsigned threads);
+  // A records field in encodings a peer with codec set `mask` decodes; false: send as is (no change needed, or unavailable).
+  bool records_for_peer(const std::string &field, const std::string &mask, std::string &out);
+  // When to build the template on `tip` (its window + the collection grace closed); 0 unknown.
+  uint64_t records_ready_at(const crypto::hash &tip);
   // Frames the proof's run lasted (0 if it doesn't decode).
   uint32_t proof_frames(const std::string &proof);
 

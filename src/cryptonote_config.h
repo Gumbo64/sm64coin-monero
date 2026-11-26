@@ -49,11 +49,11 @@
 #define SM64COIN_MAX_PROOF_BYTES                        (256 * 1024) // SM64COIN: cap on block::sm64_proof (36000 raw frames = 144 kB)
 #define SM64COIN_MAX_PROOFS_BYTES                       (2 * 1024 * 1024) // SM64COIN v0.4: cap on block::sm64_proofs (records.rs MAX_FIELD)
 // SM64COIN v0.4: the consensus features this build runs (pow/sm64pow/src/features.rs bits: 1 committed
-// inputs, 2 included proofs, 4 proof weight, 8 proof rewards). Mainnet: stage A (committed inputs only);
-// testnet and stagenet: stage B (and included proofs as data). Proof weight and rewards (stage C) stay
-// off everywhere until the imitation-cost result (docs/V0.4-DESIGN.md sections 4, 10).
+// inputs, 2 included proofs, 4 proof weight, 8 proof rewards). Testnet and stagenet: everything (stages
+// A+B+C; the imitation-cost result, docs/V0.4-DESIGN.md section 4, cleared weight and rewards with the
+// default windows). Mainnet: stage A until the maintainer decides.
 #define SM64COIN_V04_FEATURES 1
-#define SM64COIN_V04_FEATURES_TESTNET 3
+#define SM64COIN_V04_FEATURES_TESTNET 15
 #define CRYPTONOTE_DEFAULT_TX_SPENDABLE_AGE             3 // SM64COIN v0.3: was 10; 3 blocks = 1 h at 20-minute blocks
 
 #define BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW               60

@@ -347,6 +347,8 @@ namespace cryptonote
     // The block's parent for the chain rules: whether it is the genesis block, and the timestamp gap.
     bool sm64_parent_ref(const block& b, bool& genesis_parent, uint64_t& gap) const;
     bool sm64_parent_facts(const crypto::hash& id, sm64coin::parent_facts& f) const; // SM64COIN v0.4: block `id` as the parent of a block with proof records
+    static bool sm64_add_proof_outputs(transaction& tx, const std::string& field, uint64_t fee); // SM64COIN v0.4 stage C: the coinbase outputs that pay the records
+    bool sm64_check_proof_outputs(const block& b, uint64_t base_reward, uint64_t& proofs_total) const; // SM64COIN v0.4 stage C
     void sm64_pool_tip() const; // SM64COIN v0.4 stage B: tell the proof pool our tip
     // Makes block `h`'s end state available (replays its ancestors back to the cycle start as needed).
     bool sm64_rebuild(const crypto::hash& h) const;

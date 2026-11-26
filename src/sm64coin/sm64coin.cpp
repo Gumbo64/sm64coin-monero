@@ -442,17 +442,99 @@ namespace sm64coin
     return sm64pow_pool_field_for_root(u8(root), reinterpret_cast<uint8_t *>(&field[0]), n) == n;
   }
   bool record_from_block(const std::string &block_blob, std::string &record) { return size_then_fill(sm64pow_record_from_block, block_blob, record); }
-  std::string template_nonce(const std::string &miner_nonce, const crypto::public_key &spend, const crypto::public_key &view, const crypto::hash *root)
+  std::string template_nonce(const std::string &miner_nonce, const crypto::public_key &spend, const crypto::public_key &view, const crypto::hash *root, bool subaddress)
   {
     const uint8_t *sp = reinterpret_cast<const uint8_t *>(spend.data), *vw = reinterpret_cast<const uint8_t *>(view.data);
     const uint8_t *rt = root ? u8(*root) : nullptr;
-    const size_t n = sm64pow_template_nonce(u8(miner_nonce), miner_nonce.size(), 0, sp, vw, rt, nullptr, 0);
+    const size_t n = sm64pow_template_nonce(u8(miner_nonce), miner_nonce.size(), subaddress ? 1 : 0, sp, vw, rt, nullptr, 0);
     if (n == SIZE_MAX)
       return std::string();
     std::string out(n, '\0');
-    sm64pow_template_nonce(u8(miner_nonce), miner_nonce.size(), 0, sp, vw, rt, reinterpret_cast<uint8_t *>(&out[0]), n);
+    sm64pow_template_nonce(u8(miner_nonce), miner_nonce.size(), subaddress ? 1 : 0, sp, vw, rt, reinterpret_cast<uint8_t *>(&out[0]), n);
     return out;
   }
+
+  // SM64COIN v0.4 stage C.
+  bool proof_outputs(const std::string &field, uint64_t base_reward, uint32_t first, std::vector<proof_out> &outs)
+  {
+    outs.clear();
+    const size_t n = sm64pow_proof_outputs(u8(field), field.size(), base_reward, first, nullptr, 0);
+    if (n == SIZE_MAX || n % 73)
+      return false;
+    std::string b(n, '\0');
+    if (n && sm64pow_proof_outputs(u8(field), field.size(), base_reward, first, reinterpret_cast<uint8_t *>(&b[0]), n) != n)
+      return false;
+    for (size_t i = 0; i < n; i += 73)
+    {
+      proof_out o;
+      memcpy(o.key.data, b.data() + i, 32);
+      o.view_tag = (uint8_t)b[i + 32];
+      memcpy(o.tx_pub.data, b.data() + i + 33, 32);
+      for (int k = 7; k >= 0; --k)
+        o.amount = (o.amount << 8) | (uint8_t)b[i + 65 + k];
+      outs.push_back(o);
+    }
+    return true;
+  }
+  bool check_miner_tx(const std::string &field, uint64_t base_reward, const std::vector<coinbase_out> &outs, const std::vector<crypto::public_key> &add_keys, std::string &why)
+  {
+    std::string o, a;
+    for (const auto &x : outs)
+    {
+      o.append(x.key.data, 32);
+      o.push_back((char)x.view_tag);
+      for (int k = 0; k < 8; ++k)
+        o.push_back((char)((x.amount >> (8 * k)) & 0xff));
+    }
+    for (const auto &k : add_keys)
+      a.append(k.data, 32);
+    const int r = sm64pow_check_miner_tx(u8(field), field.size(), base_reward, u8(o), outs.size(), u8(a), add_keys.size());
+    if (r != 1)
+      why = last_error();
+    return r == 1;
+  }
+  uint32_t count_records(const std::string &field, const std::string &nonce, const parent_facts &h)
+  {
+    return sm64pow_count_records(u8(field), field.size(), u8(nonce), nonce.size(), h.height, u8(h.prev), h.prev_is_genesis ? 1 : 0,
+                                 u8(h.nonce), h.nonce.size(), u8(h.proof), h.proof.size(), h.difficulty);
+  }
+  static std::string cat(const std::vector<crypto::hash> &v)
+  {
+    std::string s;
+    for (const auto &h : v)
+      s.append(h.data, 32);
+    return s;
+  }
+  bool fork_choice_weighted(uint64_t main_len, const std::vector<crypto::hash> &main_seeds, const std::vector<uint32_t> &main_counted,
+                            uint64_t alt_len, const std::vector<crypto::hash> &alt_seeds, const std::vector<uint32_t> &alt_counted)
+  {
+    const std::string ms = cat(main_seeds), as = cat(alt_seeds);
+    return sm64pow_fork_choice_weighted(main_len, u8(ms), main_counted.data(), main_counted.size(), alt_len, u8(as), alt_counted.data(), alt_counted.size()) == 1;
+  }
+  uint64_t preverify_records(const std::vector<crypto::hash> &ids, const std::vector<std::string> &blocks, const std::vector<uint64_t> &difficulties, unsigned threads)
+  {
+    if (ids.empty() || ids.size() != blocks.size() || ids.size() != difficulties.size())
+      return 0;
+    std::string all;
+    std::vector<uint64_t> offsets{0};
+    for (const auto &b : blocks)
+    {
+      all += b;
+      offsets.push_back(all.size());
+    }
+    const std::string is = cat(ids);
+    return sm64pow_preverify_records(ids.size(), u8(is), u8(all), offsets.data(), difficulties.data(), threads);
+  }
+  bool records_for_peer(const std::string &field, const std::string &mask, std::string &out)
+  {
+    const uint8_t *m = mask.size() == 32 ? u8(mask) : nullptr;
+    const size_t n = sm64pow_records_for_peer(u8(field), field.size(), m, nullptr, 0);
+    if (n == 0 || n == SIZE_MAX)
+      return false;
+    out.assign(n, '\0');
+    return sm64pow_records_for_peer(u8(field), field.size(), m, reinterpret_cast<uint8_t *>(&out[0]), n) == n;
+  }
+  uint64_t records_ready_at(const crypto::hash &tip) { return sm64pow_records_ready_at(u8(tip)); }
 
   source_scope::source_scope(const std::string &host, source_kind kind, uint64_t top)
     : m_handle(sm64pow_source_enter(host.c_str(), (int32_t)kind, top))

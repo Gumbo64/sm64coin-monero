@@ -1340,6 +1340,73 @@ bool Blockchain::prevalidate_miner_transaction(const block& b, uint64_t height, 
 }
 //------------------------------------------------------------------
 // This function validates the miner transaction reward
+bool Blockchain::sm64_add_proof_outputs(transaction& tx, const std::string& field, uint64_t fee)
+{
+  // SM64COIN v0.4 stage C: after the miner's own output(s), one output per included record, to the
+  // payout its template committed (pow/sm64pow payout.rs: public per-proof tx keys in
+  // tx_extra_additional_pub_keys). Nothing when there are no records or proof rewards are off.
+  uint64_t miner = 0;
+  for (const auto &o : tx.vout)
+    miner += o.amount;
+  const uint64_t base = miner >= fee ? miner - fee : 0;
+  std::vector<sm64coin::proof_out> outs;
+  if (!sm64coin::proof_outputs(field, base, tx.vout.size(), outs))
+    return false;
+  if (outs.empty())
+    return true;
+  std::vector<crypto::public_key> add{get_tx_pub_key_from_extra(tx)};
+  add.resize(tx.vout.size(), add.front()); // the miner's outputs (one: m = 1) keep the main tx key
+  for (const auto &o : outs)
+  {
+    tx_out out;
+    out.amount = o.amount;
+    crypto::view_tag vt;
+    vt.data = (char)o.view_tag;
+    out.target = txout_to_tagged_key(o.key, vt);
+    tx.vout.push_back(out);
+    add.push_back(o.tx_pub);
+  }
+  if (!add_additional_tx_pub_keys_to_extra(tx.extra, add))
+    return false;
+  tx.invalidate_hashes();
+  return true;
+}
+//------------------------------------------------------------------
+bool Blockchain::sm64_check_proof_outputs(const block& b, uint64_t base_reward, uint64_t& proofs_total) const
+{
+  // SM64COIN v0.4 stage C: the coinbase pays exactly the outputs pow/sm64pow derives for the
+  // block's records (records.rs proof_reward, payout.rs); `proofs_total` is their sum.
+  proofs_total = 0;
+  std::vector<sm64coin::coinbase_out> outs;
+  for (const auto &o : b.miner_tx.vout)
+  {
+    sm64coin::coinbase_out c;
+    c.amount = o.amount;
+    if (o.target.type() == typeid(txout_to_tagged_key))
+    {
+      c.key = boost::get<txout_to_tagged_key>(o.target).key;
+      c.view_tag = (uint8_t)boost::get<txout_to_tagged_key>(o.target).view_tag.data;
+    }
+    else if (o.target.type() == typeid(txout_to_key))
+      c.key = boost::get<txout_to_key>(o.target).key;
+    else
+      return false;
+    outs.push_back(c);
+  }
+  std::string why;
+  if (!sm64coin::check_miner_tx(b.sm64_proofs, base_reward, outs, get_additional_tx_pub_keys_from_extra(b.miner_tx), why))
+  {
+    MERROR_VER("Proof-of-play: the coinbase doesn't pay the block's proofs as required: " << why);
+    return false;
+  }
+  std::vector<sm64coin::proof_out> expected;
+  if (!sm64coin::proof_outputs(b.sm64_proofs, base_reward, 1, expected))
+    return false;
+  for (const auto &e : expected)
+    proofs_total += e.amount;
+  return true;
+}
+//------------------------------------------------------------------
 bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_block_weight, uint64_t fee, uint64_t& base_reward, uint64_t already_generated_coins, bool &partial_block_reward, uint8_t version)
 {
   LOG_PRINT_L3("Blockchain::" << __func__);
@@ -1374,6 +1441,12 @@ bool Blockchain::validate_miner_transaction(const block& b, size_t cumulative_bl
     MERROR_VER("block weight " << cumulative_block_weight << " is bigger than allowed for this blockchain");
     return false;
   }
+  // SM64COIN v0.4 stage C: the proof outputs are new issuance on top of the miner's reward.
+  uint64_t sm64_proofs_total = 0;
+  if (!sm64_check_proof_outputs(b, base_reward, sm64_proofs_total) || money_in_use < sm64_proofs_total)
+    return false;
+  money_in_use -= sm64_proofs_total;
+  struct sm64_add_back { uint64_t &r; uint64_t v; bool on = true; ~sm64_add_back() { if (on) r += v; } } sm64_generated{base_reward, sm64_proofs_total}; // generated coins include them (on success)
   if(base_reward + fee < money_in_use)
   {
     MERROR_VER("coinbase transaction spend too much money (" << print_money(money_in_use) << "). Block reward is " << print_money(base_reward + fee) << "(" << print_money(base_reward) << "+" << print_money(fee) << "), cumulative_block_weight " << cumulative_block_weight);
@@ -1707,12 +1780,26 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
   // address and the root of the proof records it includes (stage B; records.rs TLVs). The records
   // themselves are not in the template blob: submit_block reattaches them by root.
   blobdata sm64_nonce = ex_nonce;
+  std::string sm64_field; // SM64COIN v0.4: the records this template includes (stage C: its coinbase pays them)
   if (ex_nonce.size() >= 33 && (uint8_t)ex_nonce[0] == 0x64)
   {
     sm64_pool_tip();
     crypto::hash root;
     const std::string field = sm64coin::pool_select(b.prev_id, root);
-    const std::string n = sm64coin::template_nonce(ex_nonce, miner_address.m_spend_public_key, miner_address.m_view_public_key, field.empty() ? nullptr : &root);
+    sm64_field = field;
+    // The payout address: the miner's own payout TLV if its nonce carries one (a fresh subaddress
+    // per template, get_block_template's sm64_payout_address), else the coinbase's address.
+    crypto::public_key pay_spend = miner_address.m_spend_public_key, pay_view = miner_address.m_view_public_key;
+    bool pay_sub = false;
+    for (size_t i = 33; i + 2 <= ex_nonce.size() && i + 2 + (uint8_t)ex_nonce[i + 1] <= ex_nonce.size(); i += 2 + (uint8_t)ex_nonce[i + 1])
+      if ((uint8_t)ex_nonce[i] == 0x01 && (uint8_t)ex_nonce[i + 1] == 65 && (uint8_t)ex_nonce[i + 2] <= 1)
+      {
+        pay_sub = ex_nonce[i + 2] == 1;
+        memcpy(pay_spend.data, ex_nonce.data() + i + 3, 32);
+        memcpy(pay_view.data, ex_nonce.data() + i + 35, 32);
+        break;
+      }
+    const std::string n = sm64coin::template_nonce(ex_nonce, pay_spend, pay_view, field.empty() ? nullptr : &root, pay_sub);
     if (!n.empty())
       sm64_nonce = n;
     if (!field.empty())
@@ -1720,6 +1807,7 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
   }
   bool r = construct_miner_tx(height, median_weight, already_generated_coins, txs_weight, fee, miner_address, b.miner_tx, sm64_nonce, max_outs, hf_version);
   CHECK_AND_ASSERT_MES(r, false, "Failed to construct miner tx, first chance");
+  CHECK_AND_ASSERT_MES(sm64_add_proof_outputs(b.miner_tx, sm64_field, fee), false, "Failed to add the proof outputs, first chance"); // SM64COIN v0.4
   size_t cumulative_weight = txs_weight + get_transaction_weight(b.miner_tx);
 #if defined(DEBUG_CREATE_BLOCK_TEMPLATE)
   MDEBUG("Creating block template: miner tx weight " << get_transaction_weight(b.miner_tx) <<
@@ -1730,6 +1818,7 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
     r = construct_miner_tx(height, median_weight, already_generated_coins, cumulative_weight, fee, miner_address, b.miner_tx, sm64_nonce, max_outs, hf_version);
 
     CHECK_AND_ASSERT_MES(r, false, "Failed to construct miner tx, second chance");
+    CHECK_AND_ASSERT_MES(sm64_add_proof_outputs(b.miner_tx, sm64_field, fee), false, "Failed to add the proof outputs"); // SM64COIN v0.4
     size_t coinbase_weight = get_transaction_weight(b.miner_tx);
     if (coinbase_weight > cumulative_weight - txs_weight)
     {
@@ -5256,6 +5345,23 @@ bool Blockchain::prepare_handle_incoming_blocks(const std::vector<block_complete
         const uint64_t replayed = sm64coin::preverify(batch, std::max<unsigned>(1, tools::get_max_concurrency()));
         if (replayed)
           MINFO("Proof-of-play: replayed " << replayed << " of " << batch.size() << " runs in parallel");
+        // SM64COIN v0.4 stage B: and their proof records (from the end states just cached), so the
+        // sequential check finds them in the run cache. Difficulties unknown here (0).
+        if (span && !batch.empty())
+        {
+          std::vector<crypto::hash> ids;
+          std::vector<std::string> blobs;
+          bool any = false;
+          for (size_t k = 0; k < batch.size(); ++k)
+          {
+            ids.push_back(batch[k].id);
+            blobs.push_back(t_serializable_object_to_blob(blocks[k]));
+            any = any || blocks[k].sm64_proofs.size() > 1;
+          }
+          const uint64_t rr = any ? sm64coin::preverify_records(ids, blobs, std::vector<uint64_t>(ids.size(), 0), std::max<unsigned>(1, tools::get_max_concurrency())) : 0;
+          if (rr)
+            MINFO("Proof-of-play: replayed " << rr << " proof records in parallel");
+        }
       }
 
       for (const auto & map : maps)
@@ -6122,6 +6228,24 @@ void Blockchain::sm64_pool_tip() const
   if (m_db->height() == 0 || !sm64_parent_facts(m_db->top_block_hash(), h))
     return;
   sm64coin::pool_tip(h);
+  // A sibling of our tip (same parent, another key: a displaced tip, or a valid block that lost the
+  // height) is a proof for the tip's height: offer it (the pool dedupes; a known run replays from cache).
+  std::vector<std::string> siblings;
+  m_db->for_all_alt_blocks([&](const crypto::hash &id, const alt_block_data_t &data, const cryptonote::blobdata_ref *blob) {
+    if (data.height == h.height && blob)
+    {
+      block a;
+      if (parse_and_validate_block_from_blob(*blob, a) && a.prev_id == h.prev)
+        siblings.emplace_back(blob->data(), blob->size());
+    }
+    return true;
+  }, true);
+  for (const std::string &blob : siblings)
+  {
+    std::string record, why;
+    if (sm64coin::record_from_block(blob, record) && sm64coin::pool_offer(record, why) == 1)
+      MINFO("Proof-of-play: a sibling of our tip joined the proof pool");
+  }
 }
 //------------------------------------------------------------------
 bool Blockchain::sm64_played(const block& b, std::string& pads, bool wanted) const
@@ -6495,16 +6619,28 @@ bool Blockchain::sm64_fork_choice(const std::list<block_extended_info>& alt_chai
   const uint64_t top = m_db->height() - 1, fork = alt_chain.front().height;
   const uint64_t main_len = top >= fork ? top - fork + 1 : 0;
   std::vector<crypto::hash> main_seeds, alt_seeds;
+  std::vector<uint32_t> main_counted, alt_counted; // SM64COIN v0.4 stage C: each block's records that count for weight
+  auto counted = [&](const block &x) -> uint32_t {
+    sm64coin::parent_facts h;
+    return sm64_parent_facts(x.prev_id, h) ? sm64coin::count_records(x.sm64_proofs, sm64_miner_nonce(x), h) : 0;
+  };
   for (uint64_t h = fork; h <= top && main_seeds.size() < 64; ++h)
   {
     block m;
     if (get_block_by_hash(m_db->get_block_hash_from_height(h), m))
+    {
       main_seeds.push_back(sm64_seed(m));
+      main_counted.push_back(counted(m));
+    }
   }
   for (const auto &a : alt_chain)
     if (alt_seeds.size() < 64)
+    {
       alt_seeds.push_back(sm64_seed(a.bl));
-  const bool r = sm64coin::fork_choice(main_len, main_seeds, alt_chain.size(), alt_seeds);
+      alt_counted.push_back(counted(a.bl));
+    }
+  // pow/sm64pow decides: v0.3's rule when proof weight is off, else longer AND heavier (records.rs prefer_alt).
+  const bool r = sm64coin::fork_choice_weighted(main_len, main_seeds, main_counted, alt_chain.size(), alt_seeds, alt_counted);
   if (r != (alt_chain.size() > main_len))
     MGINFO_YELLOW("Proof-of-play: fork choice with the equivocation penalty: " << (r ? "switching to" : "keeping ours against") << " an alternative chain of " << alt_chain.size() << " blocks (ours: " << main_len << " above the fork)");
   return r;

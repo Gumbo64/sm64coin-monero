@@ -981,6 +981,7 @@ namespace cryptonote
       std::string prev_block;
       std::string extra_nonce;
       uint32_t sm64_frames; // SM64COIN: a run this long; the response says when it becomes valid
+      std::string sm64_payout_address; // SM64COIN v0.4: where this template's proof would be paid (standard address or subaddress; default wallet_address)
 
       BEGIN_KV_SERIALIZE_MAP()
         KV_SERIALIZE_PARENT(rpc_request_base)
@@ -989,6 +990,7 @@ namespace cryptonote
         KV_SERIALIZE(prev_block)
         KV_SERIALIZE(extra_nonce)
         KV_SERIALIZE_OPT(sm64_frames, (uint32_t)0)
+        KV_SERIALIZE(sm64_payout_address)
       END_KV_SERIALIZE_MAP()
     };
     typedef epee::misc_utils::struct_init<request_t> request;
@@ -1033,6 +1035,7 @@ namespace cryptonote
       std::string sm64_start;
       uint64_t sm64_power_on_at;
       uint64_t sm64_restart_delay; // SM64COIN: a restart's limit is the limit this many seconds earlier
+      uint64_t sm64_records_ready_at; // SM64COIN v0.4: unix second after which a template on this parent includes the height's proofs (window + grace); 0 unknown
       uint64_t sm64_parent_timestamp;
       uint32_t sm64_parent_stars;
       uint32_t sm64_parent_keys;
@@ -1075,6 +1078,7 @@ namespace cryptonote
         KV_SERIALIZE(sm64_start)
         KV_SERIALIZE(sm64_power_on_at)
         KV_SERIALIZE_OPT(sm64_restart_delay, (uint64_t)0)
+        KV_SERIALIZE_OPT(sm64_records_ready_at, (uint64_t)0)
         KV_SERIALIZE(sm64_parent_timestamp)
         KV_SERIALIZE(sm64_parent_stars)
         KV_SERIALIZE(sm64_parent_keys)
