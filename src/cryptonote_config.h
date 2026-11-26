@@ -42,6 +42,18 @@
 #define CRYPTONOTE_MAX_TX_PER_BLOCK                     0x10000000
 #define CRYPTONOTE_PUBLIC_ADDRESS_TEXTBLOB_VER          0
 #define CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW            72 // SM64COIN: was 60; v0.2: 4. v0.3: 72 blocks = 24 h at 20-minute blocks (about Bitcoin's wall-clock maturity: a coinbase is safe from reorgs well before it can be spent, and it leaves room for a future equivocation-evidence burn)
+// SM64COIN v0.4.2: the coinbase unlock window drops from 72 blocks (the constant above, kept as the
+// pre-activation value and as the upper bound wallets use for ring selection) to 6 blocks (about 2 h at
+// 20-minute blocks) for blocks at or above SM64COIN_UNLOCK6_HEIGHT. Not a chain reset: blocks below it
+// validate exactly as in v0.4.1. Change the height here (or build with -DSM64COIN_UNLOCK6_HEIGHT=n) before release.
+#ifndef SM64COIN_UNLOCK6_HEIGHT
+#define SM64COIN_UNLOCK6_HEIGHT                         3100
+#endif
+#define SM64COIN_MINED_MONEY_UNLOCK_WINDOW_NEW          6
+inline uint64_t sm64coin_mined_money_unlock_window(uint64_t height)
+{
+  return height >= SM64COIN_UNLOCK6_HEIGHT ? SM64COIN_MINED_MONEY_UNLOCK_WINDOW_NEW : CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+}
 #define CURRENT_TRANSACTION_VERSION                     2
 #define CURRENT_BLOCK_MAJOR_VERSION                     1
 #define CURRENT_BLOCK_MINOR_VERSION                     0

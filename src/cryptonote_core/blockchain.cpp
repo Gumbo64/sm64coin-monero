@@ -1324,8 +1324,8 @@ bool Blockchain::prevalidate_miner_transaction(const block& b, uint64_t height, 
   }
   MDEBUG("Miner tx hash: " << get_transaction_hash(b.miner_tx));
   // SM64COIN: the genesis coinbase (burned, built from config) carries a 10-block unlock; every other
-  // coinbase carries CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW (v0.3: 72). (v0.2 also accepted 10 for its first blocks.)
-  CHECK_AND_ASSERT_MES(b.miner_tx.unlock_time == height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW || (height == 0 && b.miner_tx.unlock_time == 10), false, "coinbase transaction transaction has the wrong unlock time=" << b.miner_tx.unlock_time << ", expected " << height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW);
+  // coinbase carries sm64coin_mined_money_unlock_window(height) (v0.3-v0.4.1: 72; v0.4.2: 6 from SM64COIN_UNLOCK6_HEIGHT). (v0.2 also accepted 10 for its first blocks.)
+  CHECK_AND_ASSERT_MES(b.miner_tx.unlock_time == height + sm64coin_mined_money_unlock_window(height) || (height == 0 && b.miner_tx.unlock_time == 10), false, "coinbase transaction transaction has the wrong unlock time=" << b.miner_tx.unlock_time << ", expected " << height + sm64coin_mined_money_unlock_window(height));
 
   //check outs overflow
   if(!check_outs_overflow(b.miner_tx))

@@ -1015,7 +1015,7 @@ bool construct_miner_tx_manually(size_t height, uint64_t already_generated_coins
     tx.version = 2;
   else
     tx.version = 1;
-  tx.unlock_time = height + CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
+  tx.unlock_time = height + sm64coin_mined_money_unlock_window(height); // SM64COIN v0.4.2
 
   return true;
 }
