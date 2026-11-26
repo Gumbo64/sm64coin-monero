@@ -240,11 +240,11 @@ namespace config
   uint16_t const RPC_DEFAULT_PORT = 16481;
   uint16_t const ZMQ_RPC_DEFAULT_PORT = 16482;
   boost::uuids::uuid const NETWORK_ID = { {
-      0x5A, 0x3D, 0xCA, 0xBF, 0xAE, 0x70, 0x5A, 0x64, 0xBD, 0x78, 0x57, 0x90, 0xFD, 0x55, 0x28, 0xC9
-    } }; // SM64COIN v0.4 (a new chain): uuid5(dns, "sm64coin-mainnet-v0.4"); v0.3 was uuid5(dns, "sm64coin-mainnet-v0.3"); v0.2 was uuid5(dns, "sm64coin-mainnet")
+      0x15, 0x93, 0x14, 0x28, 0x07, 0x36, 0x57, 0xAE, 0x90, 0x6E, 0xEE, 0x5A, 0xF0, 0xA1, 0x63, 0x10
+    } }; // SM64COIN v0.5 (a new chain): uuid5(dns, "sm64coin-mainnet-v0.5"); v0.4 was uuid5(dns, "sm64coin-mainnet-v0.4"); v0.3 was uuid5(dns, "sm64coin-mainnet-v0.3"); v0.2 was uuid5(dns, "sm64coin-mainnet")
   // SM64COIN: unlock 10, the full v1 reward (v0.3: at 20-minute blocks, emission factor 14), paid to the RingCT H point (nobody knows its key: burned).
   std::string const GENESIS_TX = "010a01ff0001ffffffffffffff01028b655970153799af2aeadc9ff1add0ea6c7251d54154cfa92c173a0dd39c1f9421017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
-  uint32_t const GENESIS_NONCE = 64400; // SM64COIN v0.4: a new chain (v0.3: 64300, v0.2: 64064)
+  uint32_t const GENESIS_NONCE = 64500; // SM64COIN v0.5: a new chain (v0.4: 64400, v0.3: 64300, v0.2: 64064)
 
   // Hash domain separators
   const char HASH_KEY_BULLETPROOF_EXPONENT[] = "bulletproof";
@@ -284,11 +284,11 @@ namespace config
     uint16_t const RPC_DEFAULT_PORT = 26481; // SM64COIN
     uint16_t const ZMQ_RPC_DEFAULT_PORT = 26482; // SM64COIN
     boost::uuids::uuid const NETWORK_ID = { {
-      0xC0, 0xB8, 0x19, 0xE4, 0xDA, 0xB5, 0x56, 0xA4, 0xB1, 0x54, 0x79, 0xE8, 0x51, 0x83, 0x52, 0x31
-    } }; // SM64COIN v0.4 (a new chain): uuid5(dns, "sm64coin-testnet-v0.4"); v0.3 was uuid5(dns, "sm64coin-testnet-v0.3"); v0.2 was uuid5(dns, "sm64coin-testnet")
+      0x2E, 0x06, 0xB2, 0xAD, 0xB0, 0x1F, 0x5A, 0x93, 0x90, 0xA5, 0xA8, 0x6B, 0x2A, 0xC4, 0x46, 0x11
+    } }; // SM64COIN v0.5 (a new chain): uuid5(dns, "sm64coin-testnet-v0.5"); v0.4 was uuid5(dns, "sm64coin-testnet-v0.4"); v0.3 was uuid5(dns, "sm64coin-testnet-v0.3"); v0.2 was uuid5(dns, "sm64coin-testnet")
     // SM64COIN: unlock 10, the full v1 reward (v0.3: at 20-minute blocks, emission factor 14), paid to the RingCT H point (nobody knows its key: burned).
   std::string const GENESIS_TX = "010a01ff0001ffffffffffffff01028b655970153799af2aeadc9ff1add0ea6c7251d54154cfa92c173a0dd39c1f9421017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
-    uint32_t const GENESIS_NONCE = 64401; // SM64COIN v0.4 (v0.3: 64301, v0.2: 64065)
+    uint32_t const GENESIS_NONCE = 64501; // SM64COIN v0.5 (v0.4: 64401, v0.3: 64301, v0.2: 64065)
   }
 
   namespace stagenet
@@ -300,11 +300,11 @@ namespace config
     uint16_t const RPC_DEFAULT_PORT = 36481; // SM64COIN
     uint16_t const ZMQ_RPC_DEFAULT_PORT = 36482; // SM64COIN
     boost::uuids::uuid const NETWORK_ID = { {
-      0x2A, 0x4F, 0x83, 0x46, 0x7D, 0xBD, 0x5D, 0x9A, 0x91, 0x4C, 0x04, 0xA3, 0x0A, 0x4D, 0xA0, 0x1E
-    } }; // SM64COIN v0.4 (a new chain): uuid5(dns, "sm64coin-stagenet-v0.4"); v0.3 was uuid5(dns, "sm64coin-stagenet-v0.3"); v0.2 was uuid5(dns, "sm64coin-stagenet")
+      0x9E, 0xA3, 0x29, 0x54, 0x1B, 0xCF, 0x58, 0x36, 0x97, 0x54, 0xDB, 0xFB, 0x2F, 0x67, 0xA2, 0x8B
+    } }; // SM64COIN v0.5 (a new chain): uuid5(dns, "sm64coin-stagenet-v0.5"); v0.4 was uuid5(dns, "sm64coin-stagenet-v0.4"); v0.3 was uuid5(dns, "sm64coin-stagenet-v0.3"); v0.2 was uuid5(dns, "sm64coin-stagenet")
     // SM64COIN: unlock 10, the full v1 reward (v0.3: at 20-minute blocks, emission factor 14), paid to the RingCT H point (nobody knows its key: burned).
   std::string const GENESIS_TX = "010a01ff0001ffffffffffffff01028b655970153799af2aeadc9ff1add0ea6c7251d54154cfa92c173a0dd39c1f9421017767aafcde9be00dcfd098715ebcf7f410daebc582fda69d24a28e9d0bc890d1";
-    uint32_t const GENESIS_NONCE = 64402; // SM64COIN v0.4 (v0.3: 64302, v0.2: 64066)
+    uint32_t const GENESIS_NONCE = 64502; // SM64COIN v0.5 (v0.4: 64402, v0.3: 64302, v0.2: 64066)
   }
 }
 
