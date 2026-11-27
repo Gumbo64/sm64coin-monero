@@ -467,6 +467,11 @@ namespace cryptonote
   {
     if(!ctx || !ctx->m_remote_address.is_blockable() || disable_rpc_ban)
       return false;
+    // SM64COIN: never ban loopback. A public node behind a local reverse proxy or tunnel
+    // (cloudflared, caddy, the launcher's proxy) sees every visitor as 127.0.0.1, so a few
+    // stale block submissions from web miners banned all of them (eboy.au, 2026-11-26).
+    if (ctx->m_remote_address.is_loopback())
+      return false;
 
     CRITICAL_REGION_LOCAL(m_host_fails_score_lock);
     uint64_t fails = m_host_fails_score[ctx->m_remote_address.host_str()] += score;
